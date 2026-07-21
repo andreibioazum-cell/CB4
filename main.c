@@ -200,11 +200,6 @@ static GLuint compile_shader(GLenum type, const char* source) {
     glCompileShader(shader);
     GLint status;
     glGetShaderiv(shader, GL_COMPILE_STATUS, &status);
-    if (!status) {
-        char log[512];
-        glGetShaderInfoLog(shader, 512, NULL, log);
-        __android_log_print(ANDROID_LOG_ERROR, "Game2D", "Shader compile error: %s", log);
-    }
     return shader;
 }
 
@@ -270,8 +265,6 @@ static void handle_cmd(struct android_app* app, int32_t cmd) {
 
 // ========== ГЛАВНАЯ ФУНКЦИЯ ==========
 void android_main(struct android_app* app) {
-    app_dummy();
-    
     struct engine* eng = malloc(sizeof(struct engine));
     memset(eng, 0, sizeof(struct engine));
     eng->app = app;
@@ -287,7 +280,9 @@ void android_main(struct android_app* app) {
     while (1) {
         int events;
         struct android_poll_source* source;
-        while (ALooper_pollAll(0, NULL, &events, (void**)&source) >= 0) {
+        int ident;
+        
+        while ((ident = ALooper_pollOnce(0, NULL, &events, (void**)&source)) >= 0) {
             if (source) {
                 source->process(app, source);
             }
@@ -334,10 +329,6 @@ void android_main(struct android_app* app) {
         
         // Рисуем игрока (красный квадрат)
         draw_rect(eng->playerX, eng->playerY, 30.0f, 30.0f, 1.0f, 0.2f, 0.2f, 1.0f, eng);
-        
-        // Информация о направлении
-        char buffer[256];
-        snprintf(buffer, sizeof(buffer), "Dir: (%.2f, %.2f)", eng->moveDirX, eng->moveDirZ);
         
         eglSwapBuffers(eng->display, eng->surface);
     }
