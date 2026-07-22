@@ -1,9 +1,8 @@
 #include "raylib.h"
 #include "raymath.h"
-#include <android_native_app_glue.h>
 
 // Состояние игрока
-Vector2 playerPos = { 0, 0 };
+Vector2 playerPos = { 400, 400 };
 Vector2 joyCenter = { 150, 450 };
 Vector2 moveDir = { 0, 0 };
 
@@ -30,10 +29,10 @@ void DrawGame(void) {
     BeginDrawing();
     ClearBackground((Color){ 10, 10, 15, 255 });
     
-    // Рисуем мир
-    DrawCircleV(playerPos, 30, SKYBLUE);
+    // Рисуем мир (простой круг игрока)
+    DrawCircleV(playerPos, 40, SKYBLUE);
     
-    // Рисуем UI
+    // Рисуем UI Джойстик
     DrawCircleV(joyCenter, 80, (Color){ 255, 255, 255, 60 });
     Vector2 stickPos = Vector2Add(joyCenter, Vector2Scale(moveDir, 50));
     DrawCircleV(stickPos, 35, WHITE);
@@ -42,12 +41,13 @@ void DrawGame(void) {
     EndDrawing();
 }
 
-// Главная функция для Android
-void android_main(struct android_app* state) {
-    // Важно для Raylib на Android
+// ДЛЯ RAYLIB НА ANDROID ИСПОЛЬЗУЕМ ОБЫЧНЫЙ MAIN
+int main(void) {
     InitWindow(0, 0, "Geometrium");
     
     joyCenter.y = GetScreenHeight() - 150;
+    camera.offset = (Vector2){ GetScreenWidth()/2.0f, GetScreenHeight()/2.0f }; // Если используешь камеру
+
     SetTargetFPS(60);
 
     while (!WindowShouldClose()) {
@@ -55,4 +55,5 @@ void android_main(struct android_app* state) {
         DrawGame();
     }
     CloseWindow();
+    return 0;
 }
