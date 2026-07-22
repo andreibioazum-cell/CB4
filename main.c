@@ -6,14 +6,14 @@
 #include <time.h>
 
 #define PI 3.14159265f
-#define JOY_RADIUS 70.0f          // Меньше
+#define JOY_RADIUS 70.0f
 #define JOY_X_OFFSET 120.0f
 #define JOY_Y_OFFSET 120.0f
-#define STICK_RADIUS 50.0f        // Больше
+#define STICK_RADIUS 50.0f
 #define CIRCLE_SIDES 32
 #define PLAYER_SIZE 40.0f
 #define SPEED 300.0f
-#define WORLD_SIZE 1000.0f        // Размер мира
+#define WORLD_SIZE 1000.0f
 
 struct engine {
     struct android_app* app;
@@ -23,31 +23,31 @@ struct engine {
     int32_t width, height;
     
     GLuint program;
-    GLint uResLoc, uColorLoc;
+    GLint uResLoc, uColorLoc, uCamLoc;
     
     float playerX, playerY;
     float moveDirX, moveDirY;
     int32_t movePointerId;
     
-    // Камера
     float camX, camY;
     
-    // Кэшированные данные для круга
     float unitCircle[(CIRCLE_SIDES + 1) * 2];
     bool circleGenerated;
     
-    // Второй объект
     float objX, objY;
     float objSpeedX, objSpeedY;
 };
 
-// Шейдеры
+// Шейдер с камерой
 static const char* vertexShader =
     "attribute vec2 pos;"
     "uniform vec2 res;"
     "uniform vec2 cam;"
+    "uniform int useCam;"
     "void main() {"
-    "  vec2 p = (pos - cam) / res * 2.0;"
+    "  vec2 p = pos;"
+    "  if (useCam == 1) p = pos - cam;"
+    "  p = p / res * 2.0;"
     "  gl_Position = vec4(p.x, -p.y, 0.0, 1.0);"
     "}";
 
@@ -56,14 +56,12 @@ static const char* fragmentShader =
     "uniform vec4 color;"
     "void main() { gl_FragColor = color; }";
 
-// Время
 static double get_time() {
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return ts.tv_sec + ts.tv_nsec * 1e-9;
 }
 
-// Генерация единичного круга
 static void generate_unit_circle(struct engine* e) {
     if (!e->circleGenerated) {
         for (int i = 0; i <= CIRCLE_SIDES; i++) {
@@ -75,9 +73,9 @@ static void generate_unit_circle(struct engine* e) {
     }
 }
 
-// Отрисовка круга
+// Отрисовка круга с возможностью отключить камеру
 static void draw_circle(float cx, float cy, float r, float cr, float cg, float cb, float ca, 
-                        struct engine* e, bool ring, float thickness) {
+                        struct engine* e, bool ring, float thickness, bool useCam) {
     generate_unit_circle(e);
     
     int vertexCount = ring ? (CIRCLE_SIDES + 1) * 2 : (CIRCLE_SIDES + 2);
@@ -102,15 +100,17 @@ static void draw_circle(float cx, float cy, float r, float cr, float cg, float c
     
     glUseProgram(e->program);
     glUniform2f(e->uResLoc, (float)e->width, (float)e->height);
-    glUniform2f(glGetUniformLocation(e->program, "cam"), e->camX, e->camY);
+    glUniform2f(e->uCamLoc, e->camX, e->camY);
+    glUniform1i(glGetUniformLocation(e->program, "useCam"), useCam ? 1 : 0);
     glUniform4f(e->uColorLoc, cr, cg, cb, ca);
     glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, verts);
     glEnableVertexAttribArray(0);
     glDrawArrays(ring ? GL_TRIANGLE_STRIP : GL_TRIANGLE_FAN, 0, idx / 2);
 }
 
-// Отрисовка прямоугольника (с учетом камеры)
-static void draw_rect(float x, float y, float w, float h, float cr, float cg, float cb, float ca, struct engine* e) {
+// Отрисовка прямоугольника с возможностью отключить камеру
+static void draw_rect(float x, float y, float w, float h, float cr, float cg, float cb, float ca, 
+                      struct engine* e, bool useCam) {
     float hw = w * 0.5f, hh = h * 0.5f;
     float verts[] = {
         x-hw, y-hh, x+hw, y-hh, x+hw, y+hh,
@@ -119,14 +119,14 @@ static void draw_rect(float x, float y, float w, float h, float cr, float cg, fl
     
     glUseProgram(e->program);
     glUniform2f(e->uResLoc, (float)e->width, (float)e->height);
-    glUniform2f(glGetUniformLocation(e->program, "cam"), e->camX, e->camY);
+    glUniform2f(e->uCamLoc, e->camX, e->camY);
+    glUniform1i(glGetUniformLocation(e->program, "useCam"), useCam ? 1 : 0);
     glUniform4f(e->uColorLoc, cr, cg, cb, ca);
     glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, verts);
     glEnableVertexAttribArray(0);
     glDrawArrays(GL_TRIANGLES, 0, 6);
 }
 
-// Обработка ввода
 static int32_t handle_input(struct android_app* app, AInputEvent* event) {
     struct engine* e = (struct engine*)app->userData;
     if (AInputEvent_getType(event) != AINPUT_EVENT_TYPE_MOTION) return 0;
@@ -143,14 +143,12 @@ static int32_t handle_input(struct android_app* app, AInputEvent* event) {
         float jy = e->height - JOY_Y_OFFSET;
         float dx = x - jx, dy = y - jy;
         float distSq = dx*dx + dy*dy;
-        float radiusSq = (JOY_RADIUS * 2.5f) * (JOY_RADIUS * 2.5f); // Большая зона захвата
+        float radiusSq = (JOY_RADIUS * 2.5f) * (JOY_RADIUS * 2.5f);
         
         if (distSq < radiusSq) {
             e->movePointerId = id;
-            // Обновляем направление (только направление, без учета расстояния до центра)
             float dist = sqrtf(distSq);
             if (dist > 5.0f) {
-                // Нормализуем вектор, игнорируя расстояние до центра
                 e->moveDirX = dx / dist;
                 e->moveDirY = dy / dist;
             }
@@ -169,7 +167,6 @@ static int32_t handle_input(struct android_app* app, AInputEvent* event) {
                 float dist = sqrtf(dx*dx + dy*dy);
                 
                 if (dist > 5.0f) {
-                    // Только направление, скорость постоянная
                     e->moveDirX = dx / dist;
                     e->moveDirY = dy / dist;
                 } else {
@@ -196,7 +193,6 @@ static int32_t handle_input(struct android_app* app, AInputEvent* event) {
     return 0;
 }
 
-// Команды приложения
 static void handle_cmd(struct android_app* app, int32_t cmd) {
     struct engine* e = (struct engine*)app->userData;
     
@@ -225,7 +221,6 @@ static void handle_cmd(struct android_app* app, int32_t cmd) {
             e->context = eglCreateContext(e->display, config, EGL_NO_CONTEXT, ctxAttribs);
             eglMakeCurrent(e->display, e->surface, e->surface, e->context);
             
-            // Компиляция шейдеров
             GLuint vs = glCreateShader(GL_VERTEX_SHADER);
             glShaderSource(vs, 1, &vertexShader, NULL);
             glCompileShader(vs);
@@ -243,15 +238,13 @@ static void handle_cmd(struct android_app* app, int32_t cmd) {
             glDeleteShader(vs);
             glDeleteShader(fs);
             
-            // Кэшируем локации
             e->uResLoc = glGetUniformLocation(e->program, "res");
             e->uColorLoc = glGetUniformLocation(e->program, "color");
+            e->uCamLoc = glGetUniformLocation(e->program, "cam");
             
-            // Получаем размеры
             eglQuerySurface(e->display, e->surface, EGL_WIDTH, &e->width);
             eglQuerySurface(e->display, e->surface, EGL_HEIGHT, &e->height);
             
-            // Инициализация игрока
             e->playerX = 0;
             e->playerY = 0;
             e->camX = 0;
@@ -259,7 +252,6 @@ static void handle_cmd(struct android_app* app, int32_t cmd) {
             e->movePointerId = -1;
             e->circleGenerated = false;
             
-            // Второй объект
             e->objX = 300;
             e->objY = 200;
             e->objSpeedX = 50;
@@ -280,7 +272,6 @@ static void handle_cmd(struct android_app* app, int32_t cmd) {
     }
 }
 
-// Главная функция
 void android_main(struct android_app* app) {
     struct engine e = {0};
     e.app = app;
@@ -302,13 +293,12 @@ void android_main(struct android_app* app) {
         
         if (e.display == EGL_NO_DISPLAY) continue;
         
-        // Delta time
         double currentTime = get_time();
         float dt = (float)(currentTime - lastTime);
         lastTime = currentTime;
         if (dt > 0.1f) dt = 0.1f;
         
-        // Движение игрока (скорость постоянная, только направление)
+        // Движение игрока
         e.playerX += e.moveDirX * SPEED * dt;
         e.playerY += e.moveDirY * SPEED * dt;
         
@@ -326,50 +316,49 @@ void android_main(struct android_app* app) {
         // Движение второго объекта
         e.objX += e.objSpeedX * dt;
         e.objY += e.objSpeedY * dt;
-        
-        // Отражение от границ
         if (e.objX < -WORLD_SIZE/2 || e.objX > WORLD_SIZE/2) e.objSpeedX = -e.objSpeedX;
         if (e.objY < -WORLD_SIZE/2 || e.objY > WORLD_SIZE/2) e.objSpeedY = -e.objSpeedY;
         
-        // Отрисовка
+        // ОТРИСОВКА
         glViewport(0, 0, e.width, e.height);
         glClearColor(0.1f, 0.1f, 0.15f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT);
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
         
-        // Рисуем сетку мира (для ориентира)
+        // ===== МИР (с камерой) =====
+        // Рисуем сетку
         glUseProgram(e.program);
         glUniform2f(e.uResLoc, (float)e.width, (float)e.height);
-        glUniform2f(glGetUniformLocation(e.program, "cam"), e.camX, e.camY);
+        glUniform2f(e.uCamLoc, e.camX, e.camY);
+        glUniform1i(glGetUniformLocation(e.program, "useCam"), 1);
         
-        // Второй объект (зеленый круг)
-        draw_circle(e.objX, e.objY, 30, 0.0f, 1.0f, 0.0f, 1.0f, &e, false, 0);
+        // Второй объект (зеленый круг) - с камерой
+        draw_circle(e.objX, e.objY, 30, 0.0f, 1.0f, 0.0f, 1.0f, &e, false, 0, true);
         
-        // Игрок (синий квадрат)
+        // Игрок (синий квадрат) - с камерой
         draw_rect(e.playerX, e.playerY, PLAYER_SIZE, PLAYER_SIZE, 
-                  0.2f, 0.6f, 1.0f, 1.0f, &e);
+                  0.2f, 0.6f, 1.0f, 1.0f, &e, true);
         
-        // Джойстик (НЕПРОЗРАЧНЫЙ, в экранных координатах)
+        // ===== UI (БЕЗ камеры) =====
+        glUseProgram(e.program);
+        glUniform2f(e.uResLoc, (float)e.width, (float)e.height);
+        glUniform2f(e.uCamLoc, 0, 0);
+        glUniform1i(glGetUniformLocation(e.program, "useCam"), 0);
+        
         float jx = JOY_X_OFFSET;
         float jy = e.height - JOY_Y_OFFSET;
         
-        // Сброс камеры для UI
-        glUseProgram(e.program);
-        glUniform2f(e.uResLoc, (float)e.width, (float)e.height);
-        glUniform2f(glGetUniformLocation(e.program, "cam"), 0, 0);
-        
-        // Фон джойстика (непрозрачный)
-        draw_circle(jx, jy, JOY_RADIUS, 0.2f, 0.2f, 0.2f, 1.0f, &e, false, 0);
+        // Фон джойстика
+        draw_circle(jx, jy, JOY_RADIUS, 0.2f, 0.2f, 0.2f, 1.0f, &e, false, 0, false);
         // Обводка джойстика
-        draw_circle(jx, jy, JOY_RADIUS, 1.0f, 1.0f, 1.0f, 1.0f, &e, true, 3.0f);
+        draw_circle(jx, jy, JOY_RADIUS, 1.0f, 1.0f, 1.0f, 1.0f, &e, true, 3.0f, false);
         
-        // Стик (может выходить за пределы)
-        float sx = jx + e.moveDirX * JOY_RADIUS * 1.2f; // 1.2 - выход за пределы
+        // Стик
+        float sx = jx + e.moveDirX * JOY_RADIUS * 1.2f;
         float sy = jy + e.moveDirY * JOY_RADIUS * 1.2f;
-        draw_circle(sx, sy, STICK_RADIUS, 0.8f, 0.8f, 0.8f, 1.0f, &e, false, 0);
-        // Обводка стика
-        draw_circle(sx, sy, STICK_RADIUS, 1.0f, 1.0f, 1.0f, 1.0f, &e, true, 2.0f);
+        draw_circle(sx, sy, STICK_RADIUS, 0.8f, 0.8f, 0.8f, 1.0f, &e, false, 0, false);
+        draw_circle(sx, sy, STICK_RADIUS, 1.0f, 1.0f, 1.0f, 1.0f, &e, true, 2.0f, false);
         
         eglSwapBuffers(e.display, e.surface);
     }
