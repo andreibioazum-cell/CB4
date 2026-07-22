@@ -16,39 +16,35 @@ jobs:
     - name: Build Raylib
       run: |
         git clone --depth 1 https://github.com/raysan5/raylib.git
-        
-        # Сборка для 64-бит
         mkdir -p raylib/b64 && cd raylib/b64
         cmake -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_ROOT/build/cmake/android.toolchain.cmake \
           -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-21 -DPLATFORM=Android -DBUILD_EXAMPLES=OFF ..
         make -j$(nproc)
         cd ../..
-
-        # Сборка для 32-бит
         mkdir -p raylib/b32 && cd raylib/b32
         cmake -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_ROOT/build/cmake/android.toolchain.cmake \
           -DANDROID_ABI=armeabi-v7a -DANDROID_PLATFORM=android-21 -DPLATFORM=Android -DBUILD_EXAMPLES=OFF ..
         make -j$(nproc)
-        cd ../..
 
     - name: Build Final Library
       run: |
         TOOLCHAIN="$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/bin"
         
-        # Флаги. Убрали GLUE, так как он в Raylib
+        # МАГИЯ ЗДЕСЬ: --whole-archive заставляет линкер не выкидывать android_main
         CFLAGS="-O2 -s -fPIC -shared -DPLATFORM_ANDROID -DGRAPHICS_API_OPENGL_ES2 -I./raylib/src"
-        LIBS="-landroid -llog -lGLESv2 -lEGL -lm -lc"
+        LINK_FLAGS="-Wl,--whole-archive -lraylib -Wl,--no-whole-archive -landroid -llog -lGLESv2 -lEGL -lm -lc"
 
-        # Компиляция ARM64 - убрали $GLUE из аргументов
-        "$TOOLCHAIN/aarch64-linux-android21-clang" main.c -o libmain_64.so $CFLAGS -L./raylib/b64/raylib -lraylib $LIBS
+        # Сборка 64-бит
+        "$TOOLCHAIN/aarch64-linux-android21-clang" main.c -o libmain_64.so $CFLAGS \
+          -L./raylib/b64/raylib $LINK_FLAGS
 
-        # Компиляция ARM32 - убрали $GLUE из аргументов
-        "$TOOLCHAIN/armv7a-linux-androideabi21-clang" main.c -o libmain_32.so $CFLAGS -L./raylib/b32/raylib -lraylib $LIBS
+        # Сборка 32-бит
+        "$TOOLCHAIN/armv7a-linux-androideabi21-clang" main.c -o libmain_32.so $CFLAGS \
+          -L./raylib/b32/raylib $LINK_FLAGS
 
     - name: Package APK
       run: |
         BT="$ANDROID_HOME/build-tools/34.0.0"
-        
         mkdir -p staging/lib/arm64-v8a staging/lib/armeabi-v7a
         cp libmain_64.so staging/lib/arm64-v8a/libmain.so
         cp libmain_32.so staging/lib/armeabi-v7a/libmain.so
