@@ -34,17 +34,16 @@ jobs:
     - name: Build Final Library
       run: |
         TOOLCHAIN="$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/bin"
-        GLUE="$ANDROID_NDK_ROOT/sources/android/native_app_glue/android_native_app_glue.c"
         
-        # Общие флаги. Добавляем путь к glue и заголовкам Raylib
-        CFLAGS="-O2 -s -fPIC -shared -DPLATFORM_ANDROID -DGRAPHICS_API_OPENGL_ES2 -I./raylib/src -I$ANDROID_NDK_ROOT/sources/android/native_app_glue"
+        # Флаги. Убрали GLUE, так как он в Raylib
+        CFLAGS="-O2 -s -fPIC -shared -DPLATFORM_ANDROID -DGRAPHICS_API_OPENGL_ES2 -I./raylib/src"
         LIBS="-landroid -llog -lGLESv2 -lEGL -lm -lc"
 
-        # Компиляция ARM64
-        "$TOOLCHAIN/aarch64-linux-android21-clang" main.c $GLUE -o libmain_64.so $CFLAGS -L./raylib/b64/raylib -lraylib $LIBS
+        # Компиляция ARM64 - убрали $GLUE из аргументов
+        "$TOOLCHAIN/aarch64-linux-android21-clang" main.c -o libmain_64.so $CFLAGS -L./raylib/b64/raylib -lraylib $LIBS
 
-        # Компиляция ARM32
-        "$TOOLCHAIN/armv7a-linux-androideabi21-clang" main.c $GLUE -o libmain_32.so $CFLAGS -L./raylib/b32/raylib -lraylib $LIBS
+        # Компиляция ARM32 - убрали $GLUE из аргументов
+        "$TOOLCHAIN/armv7a-linux-androideabi21-clang" main.c -o libmain_32.so $CFLAGS -L./raylib/b32/raylib -lraylib $LIBS
 
     - name: Package APK
       run: |
@@ -57,7 +56,6 @@ jobs:
         "$BT/aapt" package -f -M AndroidManifest.xml -I "$ANDROID_HOME/platforms/android-34/android.jar" -F unsigned.apk staging/
         "$BT/zipalign" -v 4 unsigned.apk aligned.apk
         
-        # Генерируем ключ и подписываем
         keytool -genkey -v -keystore d.keystore -storepass android -alias a -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=G"
         "$BT/apksigner" sign --ks d.keystore --ks-pass pass:android --v1-signing-enabled true --v2-signing-enabled true --out Geometrium2D.apk aligned.apk
 
