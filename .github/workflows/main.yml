@@ -1,4 +1,4 @@
-name: Build Fast Raylib Android
+name: Universal Android Build
 
 on: [push, workflow_dispatch]
 
@@ -8,56 +8,63 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    - name: Cache Raylib
-      id: cache-raylib
-      uses: actions/cache@v3
+    - name: Setup Android NDK
+      uses: nttld/setup-ndk@v1
       with:
-        path: raylib_lib
-        key: raylib-android-v5-arm64
+        ndk-version: r25c
 
-    - name: Install Android SDK/NDK
-      run: |
-        sudo apt-get update && sudo apt-get install -y cmake
-        echo "ANDROID_NDK_ROOT=$ANDROID_SDK_ROOT/ndk-bundle" >> $GITHUB_ENV
+    - name: Install Build Tools
+      run: sudo apt-get update && sudo apt-get install -y cmake
 
-    - name: Build Raylib (only if not cached)
-      if: steps.cache-raylib.outputs.cache-hit != 'true'
+    - name: Clone Raylib
+      run: git clone --depth 1 https://github.com/raysan5/raylib.git
+
+    - name: Build Raylib for arm64 (64-bit)
       run: |
-        git clone --depth 1 https://github.com/raysan5/raylib.git
-        mkdir -p raylib/build && cd raylib/build
-        cmake -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_LATEST_HOME/build/cmake/android.toolchain.cmake \
-          -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-24 -DPLATFORM=Android \
-          -DBUILD_EXAMPLES=OFF -DBUILD_GAMES=OFF ..
+        mkdir -p raylib/build_64 && cd raylib/build_64
+        cmake -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_ROOT/build/cmake/android.toolchain.cmake \
+          -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-21 \
+          -DPLATFORM=Android -DBUILD_EXAMPLES=OFF ..
         make -j$(nproc)
-        cd ../..
-        mkdir -p raylib_lib
-        cp raylib/build/raylib/libraylib.a raylib_lib/
-        cp raylib/src/raylib.h raylib/src/raymath.h raylib/src/rlgl.h raylib_lib/
 
-    - name: Build Game Logic
+    - name: Build Raylib for armv7 (32-bit)
       run: |
-        $ANDROID_NDK_LATEST_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang \
-        main.c -o libmain.so \
-        -I./raylib_lib -L./raylib_lib -lraylib \
-        -fPIC -shared -DPLATFORM_ANDROID -DGRAPHICS_API_OPENGL_ES2 \
-        -landroid -llog -lGLESv2 -lEGL -lm -lc
+        mkdir -p raylib/build_32 && cd raylib/build_32
+        cmake -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_ROOT/build/cmake/android.toolchain.cmake \
+          -DANDROID_ABI=armeabi-v7a -DANDROID_PLATFORM=android-21 \
+          -DPLATFORM=Android -DBUILD_EXAMPLES=OFF ..
+        make -j$(nproc)
 
-    - name: Package APK
+    - name: Compile Game Logic
       run: |
-        BT="$ANDROID_SDK_ROOT/build-tools/34.0.0"
-        mkdir -p staging/lib/arm64-v8a
-        cp libmain.so staging/lib/arm64-v8a/
+        TOOLCHAIN="$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/bin"
+        FLAGS="-O2 -s -fPIC -shared -DPLATFORM_ANDROID -DGRAPHICS_API_OPENGL_ES2 -I./raylib/src"
+        LIBS="-landroid -llog -lGLESv2 -lEGL -lm -lc"
+
+        # Собираем обе версии
+        "$TOOLCHAIN/aarch64-linux-android21-clang" main.c -o libmain_64.so $FLAGS -L./raylib/build_64/raylib -lraylib $LIBS
+        "$TOOLCHAIN/armv7a-linux-androideabi21-clang" main.c -o libmain_32.so $FLAGS -L./raylib/build_32/raylib -lraylib $LIBS
+
+    - name: Create Package (APK)
+      run: |
+        # Используем актуальные пути SDK
+        BT="$ANDROID_HOME/build-tools/34.0.0"
+        PLATFORM="$ANDROID_HOME/platforms/android-34/android.jar"
         
-        # Минимальный пакет для совместимости
-        "$BT/aapt" package -f -M AndroidManifest.xml -I "$ANDROID_SDK_ROOT/platforms/android-34/android.jar" -F unsigned.apk staging/
+        mkdir -p staging/lib/arm64-v8a staging/lib/armeabi-v7a
+        cp libmain_64.so staging/lib/arm64-v8a/libmain.so
+        cp libmain_32.so staging/lib/armeabi-v7a/libmain.so
+
+        # Сборка и выравнивание
+        "$BT/aapt" package -f -M AndroidManifest.xml -I "$PLATFORM" -F unsigned.apk staging/
         "$BT/zipalign" -v 4 unsigned.apk aligned.apk
-        
-        # Подпись
-        keytool -genkey -v -keystore d.keystore -storepass android -alias a -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=G"
-        "$BT/apksigner" sign --ks d.keystore --ks-pass pass:android --out Geometrium2D.apk aligned.apk
 
-    - name: Upload
+        # Генерация ключа (если его нет) и подпись V2 (обязательно для новых Android)
+        keytool -genkey -v -keystore d.keystore -storepass android -alias a -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=G"
+        "$BT/apksigner" sign --ks d.keystore --ks-pass pass:android --v1-signing-enabled true --v2-signing-enabled true --out Geometrium2D.apk aligned.apk
+
+    - name: Upload APK
       uses: actions/upload-artifact@v4
       with:
-        name: Geometrium-Fast
+        name: Geometrium-Universal
         path: Geometrium2D.apk
