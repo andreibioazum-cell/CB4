@@ -1,4 +1,4 @@
-name: Build 2D Joystick
+name: Build Geometrium Raylib
 
 on: [push, workflow_dispatch]
 
@@ -7,36 +7,67 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
+
+    - name: Install Dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y cmake
+
     - uses: android-actions/setup-android@v3
     - name: Install Android SDK packages
       run: |
         yes | sdkmanager --licenses
         sdkmanager --install "platforms;android-34" "build-tools;34.0.0" "platform-tools"
+
     - uses: nttld/setup-ndk@v1
       with:
         ndk-version: r25c
-    - name: Build
+
+    - name: Clone and Build Raylib for Android
       run: |
-        set -euo pipefail
-        NDK_ROOT="${ANDROID_NDK_ROOT:-${ANDROID_NDK_HOME:-}}"
+        git clone --depth 1 https://github.com/raysan5/raylib.git
+        NDK_ROOT=$ANDROID_NDK_ROOT
+        
+        # Сборка для arm64
+        mkdir raylib/build_arm64 && cd raylib/build_arm64
+        cmake -DCMAKE_TOOLCHAIN_FILE=$NDK_ROOT/build/cmake/android.toolchain.cmake \
+          -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-21 -DPLATFORM=Android ..
+        make
+        cd ../..
+        
+        # Сборка для armv7
+        mkdir raylib/build_armv7 && cd raylib/build_armv7
+        cmake -DCMAKE_TOOLCHAIN_FILE=$NDK_ROOT/build/cmake/android.toolchain.cmake \
+          -DANDROID_ABI=armeabi-v7a -DANDROID_PLATFORM=android-21 -DPLATFORM=Android ..
+        make
+        cd ../..
+
+    - name: Build App
+      run: |
+        NDK_ROOT=$ANDROID_NDK_ROOT
         TOOLCHAIN="$NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/bin"
-        GLUE="$NDK_ROOT/sources/android/native_app_glue"
-        FLAGS="-O2 -s -fPIC -shared -I. -I$GLUE -landroid -llog -lGLESv2 -lEGL -lm"
-        "$TOOLCHAIN/aarch64-linux-android21-clang" main.c "$GLUE/android_native_app_glue.c" -o libmain_64.so $FLAGS
-        "$TOOLCHAIN/armv7a-linux-androideabi21-clang" main.c "$GLUE/android_native_app_glue.c" -o libmain_32.so $FLAGS
+        # Флаги для компиляции с Raylib
+        FLAGS="-O2 -s -fPIC -shared -I./raylib/src -L./raylib/build_arm64/raylib -lraylib -landroid -llog -lGLESv2 -lEGL -lm"
+        
+        # Compile 64-bit
+        "$TOOLCHAIN/aarch64-linux-android21-clang" main.c -o libmain_64.so $FLAGS -L./raylib/build_arm64/raylib
+        
+        # Compile 32-bit
+        "$TOOLCHAIN/armv7a-linux-androideabi21-clang" main.c -o libmain_32.so $FLAGS -L./raylib/build_armv7/raylib
+
     - name: Package
       run: |
-        set -euo pipefail
-        SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+        SDK_ROOT=$ANDROID_SDK_ROOT
+        BT="$SDK_ROOT/build-tools/34.0.0"
         mkdir -p staging/lib/arm64-v8a staging/lib/armeabi-v7a
         cp libmain_64.so staging/lib/arm64-v8a/libmain.so
         cp libmain_32.so staging/lib/armeabi-v7a/libmain.so
-        BT="$SDK_ROOT/build-tools/34.0.0"
         "$BT/aapt" package -f -M AndroidManifest.xml -I "$SDK_ROOT/platforms/android-34/android.jar" -F unsigned.apk staging/
         "$BT/zipalign" -v 4 unsigned.apk aligned.apk
         keytool -genkey -v -keystore d.keystore -storepass android -alias a -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=D"
         "$BT/apksigner" sign --ks d.keystore --ks-pass pass:android --out Geometrium2D.apk aligned.apk
+
     - uses: actions/upload-artifact@v4
       with:
-        name: Geometrium2D
+        name: Geometrium2D-Raylib
         path: Geometrium2D.apk
