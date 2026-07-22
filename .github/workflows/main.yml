@@ -28,46 +28,81 @@ jobs:
         git clone --depth 1 https://github.com/raysan5/raylib.git
         NDK_ROOT=$ANDROID_NDK_ROOT
         
-        # Сборка для arm64
-        mkdir raylib/build_arm64 && cd raylib/build_arm64
+        # 1. Сборка Raylib для arm64-v8a
+        mkdir -p raylib/build_arm64 && cd raylib/build_arm64
         cmake -DCMAKE_TOOLCHAIN_FILE=$NDK_ROOT/build/cmake/android.toolchain.cmake \
-          -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-21 -DPLATFORM=Android ..
+          -DANDROID_ABI=arm64-v8a \
+          -DANDROID_PLATFORM=android-21 \
+          -DPLATFORM=Android \
+          -DBUILD_EXAMPLES=OFF \
+          -DBUILD_GAMES=OFF ..
         make
         cd ../..
         
-        # Сборка для armv7
-        mkdir raylib/build_armv7 && cd raylib/build_armv7
+        # 2. Сборка Raylib для armeabi-v7a
+        mkdir -p raylib/build_armv7 && cd raylib/build_armv7
         cmake -DCMAKE_TOOLCHAIN_FILE=$NDK_ROOT/build/cmake/android.toolchain.cmake \
-          -DANDROID_ABI=armeabi-v7a -DANDROID_PLATFORM=android-21 -DPLATFORM=Android ..
+          -DANDROID_ABI=armeabi-v7a \
+          -DANDROID_PLATFORM=android-21 \
+          -DPLATFORM=Android \
+          -DBUILD_EXAMPLES=OFF \
+          -DBUILD_GAMES=OFF ..
         make
         cd ../..
 
-    - name: Build App
+    - name: Build Game Logic
       run: |
         NDK_ROOT=$ANDROID_NDK_ROOT
         TOOLCHAIN="$NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/bin"
-        # Флаги для компиляции с Raylib
-        FLAGS="-O2 -s -fPIC -shared -I./raylib/src -L./raylib/build_arm64/raylib -lraylib -landroid -llog -lGLESv2 -lEGL -lm"
         
-        # Compile 64-bit
-        "$TOOLCHAIN/aarch64-linux-android21-clang" main.c -o libmain_64.so $FLAGS -L./raylib/build_arm64/raylib
-        
-        # Compile 32-bit
-        "$TOOLCHAIN/armv7a-linux-androideabi21-clang" main.c -o libmain_32.so $FLAGS -L./raylib/build_armv7/raylib
+        # Общие флаги компиляции
+        # Мы добавляем определение PLATFORM_ANDROID, чтобы Raylib знал, как себя вести
+        CFLAGS="-O2 -s -fPIC -shared -DPLATFORM_ANDROID -DGRAPHICS_API_OPENGL_ES2 -I./raylib/src"
+        LDFLAGS="-landroid -llog -lGLESv2 -lEGL -lm -lc"
 
-    - name: Package
+        # Компиляция для arm64 (64-bit)
+        "$TOOLCHAIN/aarch64-linux-android21-clang" main.c \
+          -o libmain_64.so \
+          $CFLAGS \
+          -L./raylib/build_arm64/raylib \
+          -lraylib $LDFLAGS
+
+        # Компиляция для armv7 (32-bit)
+        "$TOOLCHAIN/armv7a-linux-androideabi21-clang" main.c \
+          -o libmain_32.so \
+          $CFLAGS \
+          -L./raylib/build_armv7/raylib \
+          -lraylib $LDFLAGS
+
+    - name: Package APK
       run: |
         SDK_ROOT=$ANDROID_SDK_ROOT
         BT="$SDK_ROOT/build-tools/34.0.0"
+        
+        # Подготовка структуры папок для APK
         mkdir -p staging/lib/arm64-v8a staging/lib/armeabi-v7a
         cp libmain_64.so staging/lib/arm64-v8a/libmain.so
         cp libmain_32.so staging/lib/armeabi-v7a/libmain.so
-        "$BT/aapt" package -f -M AndroidManifest.xml -I "$SDK_ROOT/platforms/android-34/android.jar" -F unsigned.apk staging/
+        
+        # 1. Упаковка ресурсов
+        "$BT/aapt" package -f -M AndroidManifest.xml \
+          -I "$SDK_ROOT/platforms/android-34/android.jar" \
+          -F unsigned.apk staging/
+        
+        # 2. Выравнивание (zipalign)
         "$BT/zipalign" -v 4 unsigned.apk aligned.apk
-        keytool -genkey -v -keystore d.keystore -storepass android -alias a -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=D"
-        "$BT/apksigner" sign --ks d.keystore --ks-pass pass:android --out Geometrium2D.apk aligned.apk
+        
+        # 3. Генерация временного ключа
+        keytool -genkey -v -keystore d.keystore -storepass android -alias a \
+          -keypass android -keyalg RSA -keysize 2048 -validity 10000 \
+          -dname "CN=Geometrium"
+        
+        # 4. Подпись APK
+        "$BT/apksigner" sign --ks d.keystore --ks-pass pass:android \
+          --out Geometrium2D.apk aligned.apk
 
-    - uses: actions/upload-artifact@v4
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v4
       with:
-        name: Geometrium2D-Raylib
+        name: Geometrium2D-Raylib-APK
         path: Geometrium2D.apk
