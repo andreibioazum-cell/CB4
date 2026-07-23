@@ -1,4 +1,4 @@
-name: Debug Structure
+name: Build Geometrium
 
 on: [push, workflow_dispatch]
 
@@ -8,14 +8,107 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    - name: Clone and Check Structure
+    - name: Setup NDK
+      uses: nttld/setup-ndk@v1
+      with:
+        ndk-version: r25c
+        add-to-path: true
+
+    - name: Install tools
+      run: sudo apt-get install -y cmake
+
+    - name: Setup Android SDK
+      uses: android-actions/setup-android@v3
+
+    - name: Install SDK packages
       run: |
-        git clone --depth 1 https://github.com/raysan5/raylib-game-template.git template
-        echo "=== ROOT ==="
-        ls -la template/
-        echo "=== FIND GRADLEW ==="
-        find template -name "gradlew" 2>/dev/null
-        echo "=== FIND GRADLE ==="
-        find template -name "*.gradle" 2>/dev/null
-        echo "=== FULL TREE ==="
-        find template -type f 2>/dev/null
+        yes | sdkmanager --licenses
+        sdkmanager "platforms;android-33" "build-tools;33.0.2"
+
+    - name: Clone Raylib
+      run: git clone --depth 1 --branch 5.0 https://github.com/raysan5/raylib.git
+
+    - name: Build Raylib for Android arm64
+      run: |
+        mkdir -p raylib/build_android
+        cd raylib/build_android
+        cmake .. \
+          -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_ROOT/build/cmake/android.toolchain.cmake \
+          -DANDROID_ABI=arm64-v8a \
+          -DANDROID_PLATFORM=android-21 \
+          -DPLATFORM=Android \
+          -DBUILD_EXAMPLES=OFF \
+          -DBUILD_GAMES=OFF \
+          -DWITH_PIC=ON
+        make -j$(nproc)
+
+    - name: Compile Game
+      run: |
+        TOOLCHAIN="$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/bin"
+        GLUE_SRC="$ANDROID_NDK_ROOT/sources/android/native_app_glue"
+        RAYLIB_SRC="./raylib/src"
+        RAYLIB_LIB="./raylib/build_android/raylib"
+
+        # Компилируем glue отдельно как объектный файл
+        "$TOOLCHAIN/aarch64-linux-android21-clang" \
+          -c "$GLUE_SRC/android_native_app_glue.c" \
+          -o glue.o \
+          -I"$GLUE_SRC" \
+          -fPIC -O2
+
+        # Компилируем main.c
+        "$TOOLCHAIN/aarch64-linux-android21-clang" \
+          -c main.c \
+          -o main.o \
+          -I"$RAYLIB_SRC" \
+          -I"$GLUE_SRC" \
+          -DPLATFORM_ANDROID \
+          -DGRAPHICS_API_OPENGL_ES2 \
+          -fPIC -O2
+
+        # Линкуем всё вместе
+        "$TOOLCHAIN/aarch64-linux-android21-clang" \
+          -o libmain.so \
+          main.o glue.o \
+          -shared -fPIC \
+          -L"$RAYLIB_LIB" \
+          -Wl,--whole-archive -lraylib -Wl,--no-whole-archive \
+          -Wl,-u,ANativeActivity_onCreate \
+          -landroid -llog -lGLESv2 -lEGL -lm -lc \
+          -Wl,--no-undefined
+
+    - name: Package APK
+      run: |
+        BT="$ANDROID_HOME/build-tools/33.0.2"
+        mkdir -p staging/lib/arm64-v8a
+        cp libmain.so staging/lib/arm64-v8a/libmain.so
+
+        "$BT/aapt" package -f \
+          -M AndroidManifest.xml \
+          -I "$ANDROID_HOME/platforms/android-33/android.jar" \
+          -F unsigned.apk staging/
+
+        "$BT/zipalign" -v 4 unsigned.apk aligned.apk
+
+        keytool -genkey -v \
+          -keystore key.keystore \
+          -storepass android \
+          -alias mykey \
+          -keypass android \
+          -keyalg RSA \
+          -keysize 2048 \
+          -validity 10000 \
+          -dname "CN=Geometrium"
+
+        "$BT/apksigner" sign \
+          --ks key.keystore \
+          --ks-pass pass:android \
+          --v1-signing-enabled true \
+          --v2-signing-enabled true \
+          --out Geometrium2D.apk aligned.apk
+
+    - name: Upload APK
+      uses: actions/upload-artifact@v4
+      with:
+        name: Geometrium2D
+        path: Geometrium2D.apk
