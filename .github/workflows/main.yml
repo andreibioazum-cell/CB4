@@ -1,4 +1,4 @@
-name: Auto Raymob Build
+name: Auto Raylib Android
 
 on: [push, workflow_dispatch]
 
@@ -9,15 +9,19 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    - name: Clone Raymob Template
+    - name: Clone Raylib
       run: |
-        git clone https://github.com/raylib-extras/raymob.git project
+        git clone --depth 1 https://github.com/raysan5/raylib.git
+
+    - name: Copy Android Project
+      run: |
+        cp -r raylib/projects/Android project
 
     - name: Replace main.c
       run: |
         cp main.c project/app/src/main/cpp/main.c
 
-    - name: Set up Java
+    - name: Setup Java
       uses: actions/setup-java@v4
       with:
         distribution: temurin
