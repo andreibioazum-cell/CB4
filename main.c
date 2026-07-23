@@ -27,12 +27,10 @@ static void handle_cmd(struct android_app* app, int32_t cmd) {
         e->height = ANativeWindow_getHeight(app->window);
         e->px = e->width / 2; 
         e->py = e->height / 2;
-        // Джойстик ниже и левее
         e->joy.centerX = 150; 
         e->joy.centerY = e->height - 150;
         e->joy.radius = 80;
 
-        // Загрузка текстуры
         AAssetManager* mgr = app->activity->assetManager;
         AAsset* asset = AAssetManager_open(mgr, "cube.png", AASSET_MODE_BUFFER);
         if (asset) {
@@ -114,19 +112,19 @@ void android_main(struct android_app* app) {
             e.py += e.joy.dirY * 10.0f;
 
             float scale = 1.5f;
-            // Ограничиваем позицию, чтобы текстура полностью помещалась
+            
+            // Вычисляем максимальный радиус (диагональ) для правильного ограничения при повороте
             if (e.tex_ready) {
-                // Вычисляем реальный размер текстуры после масштабирования
-                float scaledW = e.tex_width * scale;
-                float scaledH = e.tex_height * scale;
-                // Половина размера для ограничения (отступ 5 пикселей для безопасности)
-                float halfW = scaledW / 2.0f + 5.0f;
-                float halfH = scaledH / 2.0f + 5.0f;
+                float halfW = (e.tex_width * scale) / 2.0f;
+                float halfH = (e.tex_height * scale) / 2.0f;
+                // Максимальное расстояние от центра до угла (диагональ)
+                float maxRadius = sqrtf(halfW * halfW + halfH * halfH);
                 
-                if (e.px < halfW) e.px = halfW;
-                if (e.px > e.width - halfW) e.px = e.width - halfW;
-                if (e.py < halfH) e.py = halfH;
-                if (e.py > e.height - halfH) e.py = e.height - halfH;
+                // Ограничиваем позицию с учётом диагонали
+                if (e.px < maxRadius) e.px = maxRadius;
+                if (e.px > e.width - maxRadius) e.px = e.width - maxRadius;
+                if (e.py < maxRadius) e.py = maxRadius;
+                if (e.py > e.height - maxRadius) e.py = e.height - maxRadius;
             } else {
                 float half = 40.0f;
                 if (e.px < half) e.px = half;
@@ -135,8 +133,10 @@ void android_main(struct android_app* app) {
                 if (e.py > e.height - half) e.py = e.height - half;
             }
 
-            if (e.joy.dirX != 0.0f || e.joy.dirY != 0.0f)
+            // Вычисляем угол поворота
+            if (e.joy.dirX != 0.0f || e.joy.dirY != 0.0f) {
                 e.current_angle = atan2f(e.joy.dirX, -e.joy.dirY);
+            }
 
             ANativeWindow_Buffer winBuf;
             if (ANativeWindow_lock(app->window, &winBuf, NULL) == 0) {
