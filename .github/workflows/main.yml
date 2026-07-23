@@ -1,4 +1,4 @@
-name: Build Geometrium
+name: Debug Structure
 
 on: [push, workflow_dispatch]
 
@@ -8,34 +8,14 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    - name: Setup Java
-      uses: actions/setup-java@v4
-      with:
-        distribution: temurin
-        java-version: 17
-
-    - name: Setup Android SDK
-      uses: android-actions/setup-android@v3
-
-    - name: Install SDK packages
+    - name: Clone and Check Structure
       run: |
-        yes | sdkmanager --licenses
-        sdkmanager "platforms;android-33" "build-tools;33.0.2" "cmake;3.22.1" "ndk;25.2.9519653"
-
-    - name: Clone Raylib and Template
-      run: |
-        git clone --depth 1 https://github.com/raysan5/raylib.git
         git clone --depth 1 https://github.com/raysan5/raylib-game-template.git template
-        
-        # Смотрим структуру шаблона
-        echo "=== TEMPLATE ROOT ==="
+        echo "=== ROOT ==="
         ls -la template/
-        echo "=== TEMPLATE SUBDIRS ==="
-        find template -type f -name "gradlew" 2>/dev/null || echo "gradlew NOT FOUND"
-        find template -type f -name "*.gradle" 2>/dev/null || echo "No gradle files"
-
-    - name: Upload structure log
-      uses: actions/upload-artifact@v4
-      with:
-        name: structure-log
-        path: template/
+        echo "=== FIND GRADLEW ==="
+        find template -name "gradlew" 2>/dev/null
+        echo "=== FIND GRADLE ==="
+        find template -name "*.gradle" 2>/dev/null
+        echo "=== FULL TREE ==="
+        find template -type f 2>/dev/null
