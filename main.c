@@ -1,51 +1,40 @@
 #include <android_native_app_glue.h>
-#include <android/asset_manager.h>
 #include <math.h>
-#include <stdlib.h>
 #include "graphics.h"
 #include "ui.h"
 
 struct engine {
     struct android_app* app;
     Joystick joy;
-    Image player;
-    float x, y;
-    int ready;
+    float px, py;
+    int width, height;
 };
-
-void load_assets(struct engine* e) {
-    AAsset* a = AAssetManager_open(e->app->activity->assetManager, "cube.tga", AASSET_MODE_BUFFER);
-    if (a) {
-        size_t s = AAsset_getLength(a);
-        unsigned char* buf = malloc(s);
-        AAsset_read(a, buf, s);
-        AAsset_close(a);
-        graphics_load_tga(&e->player, buf);
-        free(buf);
-    }
-}
 
 static void handle_cmd(struct android_app* app, int32_t cmd) {
     struct engine* e = (struct engine*)app->userData;
     if (cmd == APP_CMD_INIT_WINDOW) {
         ANativeWindow_setBuffersGeometry(app->window, 0, 0, WINDOW_FORMAT_RGBA_8888);
-        e->x = ANativeWindow_getWidth(app->window) / 2.0f;
-        e->y = ANativeWindow_getHeight(app->window) / 2.0f;
-        e->joy.cx = 200; e->joy.cy = ANativeWindow_getHeight(app->window) - 200; e->joy.r = 120;
-        load_assets(e);
-        e->ready = 1;
-    } else if (cmd == APP_CMD_TERM_WINDOW) {
-        e->ready = 0;
+        e->width = ANativeWindow_getWidth(app->window);
+        e->height = ANativeWindow_getHeight(app->window);
+        e->px = e->width / 2; e->py = e->height / 2;
+        e->joy.centerX = 200; e->joy.centerY = e->height - 200;
+        e->joy.radius = 120;
     }
 }
 
-static int32_t handle_input(struct android_app* app, AInputEvent* ev) {
+static int32_t handle_input(struct android_app* app, AInputEvent* event) {
     struct engine* e = (struct engine*)app->userData;
-    if (AInputEvent_getType(ev) == AINPUT_EVENT_TYPE_MOTION) {
-        float mx = AMotionEvent_getX(ev, 0), my = AMotionEvent_getY(ev, 0);
-        float dx = mx - e->joy.cx, dy = my - e->joy.cy, l = sqrtf(dx*dx + dy*dy);
-        if (l > 10.0f) { e->joy.dx = dx/l; e->joy.dy = dy/l; }
-        else { e->joy.dx = 0; e->joy.dy = 0; }
+    if (AInputEvent_getType(event) == AINPUT_EVENT_TYPE_MOTION) {
+        float x = AMotionEvent_getX(event, 0);
+        float y = AMotionEvent_getY(event, 0);
+        float dx = x - e->joy.centerX;
+        float dy = y - e->joy.centerY;
+        float len = sqrtf(dx*dx + dy*dy);
+        if (len > 10.0f) {
+            e->joy.dirX = dx/len; e->joy.dirY = dy/len;
+        } else {
+            e->joy.dirX = 0; e->joy.dirY = 0;
+        }
         return 1;
     }
     return 0;
@@ -56,20 +45,27 @@ void android_main(struct android_app* app) {
     app->userData = &e;
     app->onAppCmd = handle_cmd;
     app->onInputEvent = handle_input;
+
     while (1) {
-        int id; struct android_poll_source* s;
-        while ((id = ALooper_pollOnce(0, NULL, NULL, (void**)&s)) >= 0) {
-            if (s) s->process(app, s);
+        int ident;
+        struct android_poll_source* source;
+        while ((ident = ALooper_pollOnce(0, NULL, NULL, (void**)&source)) >= 0) {
+            if (source) source->process(app, source);
             if (app->destroyRequested) return;
         }
-        if (e.ready && app->window) {
-            e.x += e.joy.dx * 8.0f; e.y += e.joy.dy * 8.0f;
-            ANativeWindow_Buffer b;
-            if (ANativeWindow_lock(app->window, &b, NULL) == 0) {
-                RenderBuffer rb = { (uint32_t*)b.bits, b.width, b.height, b.stride };
-                graphics_clear(&rb, 0xFFCCCCCC);
-                graphics_draw_image(&rb, &e.player, (int)e.x, (int)e.y);
-                ui_draw(&rb, &e.joy);
+
+        if (app->window) {
+            e.px += e.joy.dirX * 10.0f;
+            e.py += e.joy.dirY * 10.0f;
+
+            ANativeWindow_Buffer winBuf;
+            if (ANativeWindow_lock(app->window, &winBuf, NULL) == 0) {
+                RenderBuffer rb = { (uint32_t*)winBuf.bits, winBuf.width, winBuf.height, winBuf.stride };
+                
+                graphics_clear(&rb, 0xFFCCCCCC); // Серый фон
+                graphics_draw_rect(&rb, (int)e.px, (int)e.py, 80, 0xFFEE7722); // Игрок
+                ui_draw_joystick(&rb, &e.joy); // Интерфейс
+
                 ANativeWindow_unlockAndPost(app->window);
             }
         }
