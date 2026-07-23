@@ -16,15 +16,17 @@ jobs:
         SRCS="main.c graphics.c ui.c $GLUE/android_native_app_glue.c"
         FLAGS="-O3 -s -fPIC -shared -I. -I$GLUE -landroid -llog -lm"
         "$TC/aarch64-linux-android21-clang" $SRCS -o libmain_64.so $FLAGS
-        "$TC/armv7a-linux-androideabi21-clang" $SRCS -o libmain_32.so $FLAGS -mfpu=neon
+        "$TC/armv7a-linux-androideabi21-clang" $SRCS -o libmain_32.so $FLAGS
     - name: Package
       run: |
         rm -rf st
         mkdir -p st/lib/arm64-v8a st/lib/armeabi-v7a st/assets
         cp libmain_64.so st/lib/arm64-v8a/libmain.so
         cp libmain_32.so st/lib/armeabi-v7a/libmain.so
+        # Картинка берется из папки assets репозитория
         cp assets/cube_ordinary.png st/assets/
         BT="$ANDROID_HOME/build-tools/34.0.0"
+        # Убедись, что файл манифеста называется AndroidManifest.xml
         "$BT/aapt" package -f -M AndroidManifest.xml -I "$ANDROID_HOME/platforms/android-34/android.jar" -F u.apk ./st/
         "$BT/zipalign" -v 4 u.apk a.apk
         keytool -genkey -v -keystore d.jks -storepass android -alias d -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=D"
