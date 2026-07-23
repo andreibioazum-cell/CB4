@@ -1,4 +1,4 @@
-name: Build Hardcore 2D
+name: Build Modular Hardcore 2D
 on: [push, workflow_dispatch]
 jobs:
   build:
@@ -10,16 +10,17 @@ jobs:
       with:
         ndk-version: r25c
     
-    - name: Build Optimized
+    - name: Build
       run: |
         NDK_ROOT=$ANDROID_NDK_ROOT
         TOOLCHAIN="$NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/bin"
         GLUE="$NDK_ROOT/sources/android/native_app_glue"
-        # Флаги разгона: -O3, -mfpu=neon (для 32 бит), -march=armv8-a
+        # Компилируем все файлы вместе
+        SRCS="main.c graphics.c ui.c $GLUE/android_native_app_glue.c"
         FLAGS="-O3 -s -fPIC -shared -I. -I$GLUE -landroid -llog -lm"
         
-        "$TOOLCHAIN/aarch64-linux-android21-clang" main.c "$GLUE/android_native_app_glue.c" -o libmain_64.so $FLAGS
-        "$TOOLCHAIN/armv7a-linux-androideabi21-clang" main.c "$GLUE/android_native_app_glue.c" -o libmain_32.so $FLAGS -mfpu=neon
+        "$TOOLCHAIN/aarch64-linux-android21-clang" $SRCS -o libmain_64.so $FLAGS
+        "$TOOLCHAIN/armv7a-linux-androideabi21-clang" $SRCS -o libmain_32.so $FLAGS -mfpu=neon
     
     - name: Package
       run: |
@@ -31,9 +32,9 @@ jobs:
         "$BT/aapt" package -f -M ./AndroidManifest.xml -I "$SDK_ROOT/platforms/android-34/android.jar" -F unsigned.apk ./staging/
         "$BT/zipalign" -v 4 unsigned.apk aligned.apk
         keytool -genkey -v -keystore debug.keystore -storepass android -alias debug -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Debug"
-        "$BT/apksigner" sign --ks debug.keystore --ks-pass pass:android --out Hardcore2D.apk aligned.apk
+        "$BT/apksigner" sign --ks debug.keystore --ks-pass pass:android --out Game.apk aligned.apk
         
     - uses: actions/upload-artifact@v4
       with:
-        name: Hardcore2D-APK
-        path: Hardcore2D.apk
+        name: Game-APK
+        path: Game.apk
