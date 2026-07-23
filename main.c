@@ -1,14 +1,39 @@
 #include <android_native_app_glue.h>
+#include <android/asset_manager.h>
 #include <math.h>
 #include "graphics.h"
 #include "ui.h"
 
+// Подключаем библиотеку для чтения картинок
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb_image.h"
+
 struct engine {
     struct android_app* app;
     Joystick joy;
+    Image playerImg;
     float px, py;
     int width, height;
 };
+
+// Функция загрузки картинки из папки assets внутри APK
+void load_player_image(struct engine* e) {
+    AAsset* asset = AAssetManager_open(e->app->activity->assetManager, "cube_ordinary.png", AASSET_MODE_BUFFER);
+    if (asset) {
+        size_t size = AAsset_getLength(asset);
+        void* buffer = malloc(size);
+        AAsset_read(asset, buffer, size);
+        AAsset_close(asset);
+
+        int w, h, channels;
+        // Распаковка PNG в массив пикселей RGBA
+        unsigned char* data = stbi_load_from_memory(buffer, size, &w, &h, &channels, 4);
+        e->playerImg.pixels = (uint32_t*)data;
+        e->playerImg.width = w;
+        e->playerImg.height = h;
+        free(buffer);
+    }
+}
 
 static void handle_cmd(struct android_app* app, int32_t cmd) {
     struct engine* e = (struct engine*)app->userData;
@@ -19,6 +44,7 @@ static void handle_cmd(struct android_app* app, int32_t cmd) {
         e->px = e->width / 2; e->py = e->height / 2;
         e->joy.centerX = 200; e->joy.centerY = e->height - 200;
         e->joy.radius = 120;
+        load_player_image(e);
     }
 }
 
@@ -62,9 +88,14 @@ void android_main(struct android_app* app) {
             if (ANativeWindow_lock(app->window, &winBuf, NULL) == 0) {
                 RenderBuffer rb = { (uint32_t*)winBuf.bits, winBuf.width, winBuf.height, winBuf.stride };
                 
-                graphics_clear(&rb, 0xFFCCCCCC); // Серый фон
-                graphics_draw_rect(&rb, (int)e.px, (int)e.py, 80, 0xFFEE7722); // Игрок
-                ui_draw_joystick(&rb, &e.joy); // Интерфейс
+                graphics_clear(&rb, 0xFFCCCCCC); 
+
+                // РИСУЕМ ИГРОКА КАРТИНКОЙ
+                if (e.playerImg.pixels) {
+                    graphics_draw_image(&rb, &e.playerImg, (int)e.px, (int)e.py);
+                }
+
+                ui_draw_joystick(&rb, &e.joy);
 
                 ANativeWindow_unlockAndPost(app->window);
             }
