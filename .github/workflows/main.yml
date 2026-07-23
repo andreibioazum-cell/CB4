@@ -1,37 +1,83 @@
 name: Build Accelerated
 on: [push, workflow_dispatch]
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
-    - uses: android-actions/setup-android@v3
-    - uses: nttld/setup-ndk@v1
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Android SDK
+      uses: android-actions/setup-android@v3
+
+    - name: Install NDK
+      uses: nttld/setup-ndk@v1
       with:
         ndk-version: r25c
-    - name: Compile
+
+    - name: Build Shared Libraries
       run: |
-        TC="$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/bin"
-        GLUE="$ANDROID_NDK_ROOT/sources/android/native_app_glue"
+        NDK_ROOT=$ANDROID_NDK_ROOT
+        TC="$NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/bin"
+        GLUE="$NDK_ROOT/sources/android/native_app_glue"
+        
+        # Список исходников
         SRCS="main.c graphics.c ui.c $GLUE/android_native_app_glue.c"
+        
+        # Флаги компиляции (-O3 для авто-разгона)
         FLAGS="-O3 -s -fPIC -shared -I. -I$GLUE -landroid -llog -lm"
+
+        # Сборка для 64-бит
         "$TC/aarch64-linux-android21-clang" $SRCS -o libmain_64.so $FLAGS
+
+        # Сборка для 32-бит
         "$TC/armv7a-linux-androideabi21-clang" $SRCS -o libmain_32.so $FLAGS
-    - name: Package
+
+    - name: Package APK
       run: |
+        # Полная очистка временной папки перед сборкой
         rm -rf st
-        mkdir -p st/lib/arm64-v8a st/lib/armeabi-v7a st/assets
+        mkdir -p st/lib/arm64-v8a
+        mkdir -p st/lib/armeabi-v7a
+        mkdir -p st/assets
+        
+        # Копируем скомпилированные библиотеки
         cp libmain_64.so st/lib/arm64-v8a/libmain.so
         cp libmain_32.so st/lib/armeabi-v7a/libmain.so
-        # Копируем картинку из папки assets репозитория в папку сборки
-        cp assets/cube_ordinary.png st/assets/
-        BT="$ANDROID_HOME/build-tools/34.0.0"
-        # Проверь имя файла: AndroidManifest.xml
-        "$BT/aapt" package -f -M AndroidManifest.xml -I "$ANDROID_HOME/platforms/android-34/android.jar" -F u.apk ./st/
-        "$BT/zipalign" -v 4 u.apk a.apk
-        keytool -genkey -v -keystore d.jks -storepass android -alias d -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=D"
-        "$BT/apksigner" sign --ks d.jks --ks-pass pass:android --out Game.apk a.apk
-    - uses: actions/upload-artifact@v4
+        
+        # Копируем картинку из папки assets репозитория в папку активов APK
+        if [ -f "assets/cube.tga" ]; then
+          cp assets/cube.tga st/assets/
+        else
+          echo "ERROR: assets/cube.tga not found!"
+          exit 1
+        fi
+
+        SDK_ROOT=$ANDROID_HOME
+        BT="$SDK_ROOT/build-tools/34.0.0"
+        
+        # 1. Упаковка ресурсов (aapt сам подхватит папку assets внутри st)
+        # Убедись, что файл в корне называется AndroidManifest.xml
+        "$BT/aapt" package -f -M AndroidManifest.xml \
+                   -I "$SDK_ROOT/platforms/android-34/android.jar" \
+                   -F unsigned.apk ./st/
+
+        # 2. Выравнивание
+        "$BT/zipalign" -v 4 unsigned.apk aligned.apk
+
+        # 3. Генерация ключа (debug)
+        keytool -genkey -v -keystore debug.keystore -storepass android -alias debug \
+                -keypass android -keyalg RSA -keysize 2048 -validity 10000 \
+                -dname "CN=AndroidDebug, O=Android, C=US"
+
+        # 4. Подпись APK
+        "$BT/apksigner" sign --ks debug.keystore \
+                         --ks-pass pass:android \
+                         --out Geometrium2D.apk aligned.apk
+
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v4
       with:
-        name: Game
-        path: Game.apk
+        name: Geometrium2D-APK
+        path: Geometrium2D.apk
