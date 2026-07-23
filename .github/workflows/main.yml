@@ -13,11 +13,6 @@ jobs:
       with:
         ndk-version: r25c
 
-    - name: Install SDK packages
-      run: |
-        yes | sdkmanager --licenses
-        sdkmanager "platforms;android-33" "build-tools;33.0.2"
-
     - name: Clone Raylib
       run: git clone --depth 1 --branch 5.0 https://github.com/raysan5/raylib.git
 
@@ -34,13 +29,11 @@ jobs:
           -DCMAKE_BUILD_TYPE=Release
         make -j$(nproc)
 
-    - name: Build Game
+    - name: Build Game Logic
       run: |
-        TOOLCHAIN="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin"
-        
-        # Компилируем только наш main.c
-        # Raylib УЖЕ содержит в себе native_app_glue, второй раз его добавлять нельзя!
-        "$TOOLCHAIN/aarch64-linux-android21-clang" main.c -o libmain.so \
+        # Используем компилятор напрямую из NDK
+        $ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android21-clang \
+          main.c -o libmain.so \
           -I./raylib/src \
           -L./raylib/build/raylib \
           -shared -fPIC -O2 \
@@ -50,21 +43,20 @@ jobs:
 
     - name: Package APK
       run: |
-        BT="$ANDROID_HOME/build-tools/33.0.2"
+        # Находим инструменты в предустановленном SDK
+        BT=$(ls -d $ANDROID_HOME/build-tools/* | tail -1)
+        JAR=$(ls $ANDROID_HOME/platforms/android-*/android.jar | tail -1)
+        
         mkdir -p staging/lib/arm64-v8a
         cp libmain.so staging/lib/arm64-v8a/libmain.so
 
-        # Создаем пакет
-        "$BT/aapt" package -f -M AndroidManifest.xml \
-          -I "$ANDROID_HOME/platforms/android-33/android.jar" \
-          -F unsigned.apk staging/
-
-        # Выравнивание
-        "$BT/zipalign" -v 4 unsigned.apk aligned.apk
+        # Упаковка
+        $BT/aapt package -f -M AndroidManifest.xml -I $JAR -F unsigned.apk staging/
+        $BT/zipalign -v 4 unsigned.apk aligned.apk
 
         # Подпись
         keytool -genkey -v -keystore k.keystore -storepass android -alias a -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=G"
-        "$BT/apksigner" sign --ks k.keystore --ks-pass pass:android --out Geometrium2D.apk aligned.apk
+        $BT/apksigner sign --ks k.keystore --ks-pass pass:android --out Geometrium2D.apk aligned.apk
 
     - name: Upload APK
       uses: actions/upload-artifact@v4
