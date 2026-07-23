@@ -116,14 +116,19 @@ void android_main(struct android_app* app) {
             float scale = 1.5f;
             // Ограничиваем позицию, чтобы текстура полностью помещалась
             if (e.tex_ready) {
-                float halfW = (e.tex_width * scale) / 2.0f;
-                float halfH = (e.tex_height * scale) / 2.0f;
+                // Вычисляем реальный размер текстуры после масштабирования
+                float scaledW = e.tex_width * scale;
+                float scaledH = e.tex_height * scale;
+                // Половина размера для ограничения (отступ 5 пикселей для безопасности)
+                float halfW = scaledW / 2.0f + 5.0f;
+                float halfH = scaledH / 2.0f + 5.0f;
+                
                 if (e.px < halfW) e.px = halfW;
                 if (e.px > e.width - halfW) e.px = e.width - halfW;
                 if (e.py < halfH) e.py = halfH;
                 if (e.py > e.height - halfH) e.py = e.height - halfH;
             } else {
-                float half = 40.0f; // fallback квадрат
+                float half = 40.0f;
                 if (e.px < half) e.px = half;
                 if (e.px > e.width - half) e.px = e.width - half;
                 if (e.py < half) e.py = half;
