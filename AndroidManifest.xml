@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.geometrium.joystick"
+    package="com.geometrium.game"
     android:versionCode="1"
     android:versionName="1.0">
 
@@ -12,8 +12,10 @@
         android:hasCode="false"
         android:extractNativeLibs="true">
         <activity android:name="android.app.NativeActivity"
-            android:configChanges="orientation|keyboardHidden|screenSize"
+            android:configChanges="orientation|keyboardHidden|screenSize|screenLayout"
+            android:label="Geometrium"
             android:exported="true">
+            <!-- Android ищет libmain.so -->
             <meta-data android:name="android.app.lib_name" android:value="main" />
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
