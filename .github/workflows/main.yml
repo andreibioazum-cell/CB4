@@ -19,8 +19,9 @@ jobs:
 
     - name: Build Raylib Android
       run: |
-        mkdir -p raylib/build && cd raylib/build
-        # ПРИНУДИТЕЛЬНО указываем путь к нашей версии NDK через -DANDROID_NDK
+        mkdir -p raylib/build
+        cd raylib/build
+
         cmake .. \
           -DCMAKE_TOOLCHAIN_FILE=${{ steps.setup-ndk.outputs.ndk-path }}/build/cmake/android.toolchain.cmake \
           -DANDROID_NDK=${{ steps.setup-ndk.outputs.ndk-path }} \
@@ -30,17 +31,20 @@ jobs:
           -DBUILD_EXAMPLES=OFF \
           -DBUILD_GAMES=OFF \
           -DCMAKE_BUILD_TYPE=Release
+
         make -j$(nproc)
 
     - name: Build Game Logic
       run: |
-        # Используем компилятор строго из NDK r25c
         NDK_PATH=${{ steps.setup-ndk.outputs.ndk-path }}
         CC=$NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang
-        
-        $CC ../main.c -o ../libmain.so \
-          -I../raylib/src \
-          -L./raylib \
+
+        # ВАЖНО: возвращаемся в корень репозитория
+        cd $GITHUB_WORKSPACE
+
+        $CC main.c -o libmain.so \
+          -I./raylib/src \
+          -L./raylib/build/raylib \
           -shared -fPIC -O2 \
           -DPLATFORM_ANDROID -DGRAPHICS_API_OPENGL_ES2 \
           -Wl,--whole-archive -lraylib -Wl,--no-whole-archive \
@@ -48,19 +52,30 @@ jobs:
 
     - name: Package APK
       run: |
-        # Используем стандартный SDK для упаковки
         BT=$(ls -d $ANDROID_HOME/build-tools/* | tail -1)
         JAR=$(ls $ANDROID_HOME/platforms/android-*/android.jar | tail -1)
-        
+
         mkdir -p staging/lib/arm64-v8a
         cp libmain.so staging/lib/arm64-v8a/libmain.so
 
         $BT/aapt package -f -M AndroidManifest.xml -I $JAR -F unsigned.apk staging/
         $BT/zipalign -v 4 unsigned.apk aligned.apk
 
-        # Создаем ключ и подписываем
-        keytool -genkey -v -keystore k.keystore -storepass android -alias a -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=G"
-        $BT/apksigner sign --ks k.keystore --ks-pass pass:android --out Geometrium2D.apk aligned.apk
+        keytool -genkey -v \
+          -keystore k.keystore \
+          -storepass android \
+          -alias a \
+          -keypass android \
+          -keyalg RSA \
+          -keysize 2048 \
+          -validity 10000 \
+          -dname "CN=G"
+
+        $BT/apksigner sign \
+          --ks k.keystore \
+          --ks-pass pass:android \
+          --out Geometrium2D.apk \
+          aligned.apk
 
     - name: Upload APK
       uses: actions/upload-artifact@v4
