@@ -1,48 +1,39 @@
-name: Auto Raylib Android
-
+name: Build Hardcore 2D
 on: [push, workflow_dispatch]
-
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
     - uses: actions/checkout@v4
-
-    - name: Clone Raylib
-      run: |
-        git clone --depth 1 https://github.com/raysan5/raylib.git
-
-    - name: Copy Android Project
-      run: |
-        cp -r raylib/projects/Android project
-
-    - name: Replace main.c
-      run: |
-        cp main.c project/app/src/main/cpp/main.c
-
-    - name: Setup Java
-      uses: actions/setup-java@v4
+    - uses: android-actions/setup-android@v3
+    - uses: nttld/setup-ndk@v1
       with:
-        distribution: temurin
-        java-version: 17
-
-    - name: Setup Android SDK
-      uses: android-actions/setup-android@v3
-
-    - name: Install NDK
+        ndk-version: r25c
+    
+    - name: Build Optimized
       run: |
-        yes | sdkmanager --licenses
-        sdkmanager "ndk;25.2.9519653"
-
-    - name: Build APK
+        NDK_ROOT=$ANDROID_NDK_ROOT
+        TOOLCHAIN="$NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/bin"
+        GLUE="$NDK_ROOT/sources/android/native_app_glue"
+        # Флаги разгона: -O3, -mfpu=neon (для 32 бит), -march=armv8-a
+        FLAGS="-O3 -s -fPIC -shared -I. -I$GLUE -landroid -llog -lm"
+        
+        "$TOOLCHAIN/aarch64-linux-android21-clang" main.c "$GLUE/android_native_app_glue.c" -o libmain_64.so $FLAGS
+        "$TOOLCHAIN/armv7a-linux-androideabi21-clang" main.c "$GLUE/android_native_app_glue.c" -o libmain_32.so $FLAGS -mfpu=neon
+    
+    - name: Package
       run: |
-        cd project
-        chmod +x gradlew
-        ./gradlew assembleRelease
-
-    - name: Upload APK
-      uses: actions/upload-artifact@v4
+        mkdir -p staging/lib/arm64-v8a staging/lib/armeabi-v7a
+        cp libmain_64.so staging/lib/arm64-v8a/libmain.so
+        cp libmain_32.so staging/lib/armeabi-v7a/libmain.so
+        SDK_ROOT=$ANDROID_HOME
+        BT="$SDK_ROOT/build-tools/34.0.0"
+        "$BT/aapt" package -f -M ./AndroidManifest.xml -I "$SDK_ROOT/platforms/android-34/android.jar" -F unsigned.apk ./staging/
+        "$BT/zipalign" -v 4 unsigned.apk aligned.apk
+        keytool -genkey -v -keystore debug.keystore -storepass android -alias debug -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Debug"
+        "$BT/apksigner" sign --ks debug.keystore --ks-pass pass:android --out Hardcore2D.apk aligned.apk
+        
+    - uses: actions/upload-artifact@v4
       with:
-        name: Geometrium
-        path: project/app/build/outputs/apk/release/app-release.apk
+        name: Hardcore2D-APK
+        path: Hardcore2D.apk
