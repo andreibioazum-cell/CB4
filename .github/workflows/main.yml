@@ -1,4 +1,4 @@
-name: Stable Universal Build
+name: Ultimate Android Build
 
 on: [push, workflow_dispatch]
 
@@ -16,47 +16,45 @@ jobs:
     - name: Build Raylib
       run: |
         git clone --depth 1 https://github.com/raysan5/raylib.git
-        mkdir -p raylib/b64 && cd raylib/b64
+        mkdir -p raylib/build && cd raylib/build
         cmake -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_ROOT/build/cmake/android.toolchain.cmake \
-          -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-21 -DPLATFORM=Android -DBUILD_EXAMPLES=OFF ..
-        make -j$(nproc)
-        cd ../..
-        mkdir -p raylib/b32 && cd raylib/b32
-        cmake -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_ROOT/build/cmake/android.toolchain.cmake \
-          -DANDROID_ABI=armeabi-v7a -DANDROID_PLATFORM=android-21 -DPLATFORM=Android -DBUILD_EXAMPLES=OFF ..
+          -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-21 \
+          -DPLATFORM=Android -DBUILD_EXAMPLES=OFF -DBUILD_GAMES=OFF ..
         make -j$(nproc)
 
-    - name: Build Final Library
+    - name: Build Shared Library
       run: |
         TOOLCHAIN="$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/bin"
         
-        # МАГИЯ ЗДЕСЬ: --whole-archive заставляет линкер не выкидывать android_main
-        CFLAGS="-O2 -s -fPIC -shared -DPLATFORM_ANDROID -DGRAPHICS_API_OPENGL_ES2 -I./raylib/src"
-        LINK_FLAGS="-Wl,--whole-archive -lraylib -Wl,--no-whole-archive -landroid -llog -lGLESv2 -lEGL -lm -lc"
+        # Компилируем объектный файл
+        "$TOOLCHAIN/aarch64-linux-android21-clang" -c main.c -o main.o \
+          -O2 -fPIC -DPLATFORM_ANDROID -DGRAPHICS_API_OPENGL_ES2 -I./raylib/src
 
-        # Сборка 64-бит
-        "$TOOLCHAIN/aarch64-linux-android21-clang" main.c -o libmain_64.so $CFLAGS \
-          -L./raylib/b64/raylib $LINK_FLAGS
-
-        # Сборка 32-бит
-        "$TOOLCHAIN/armv7a-linux-androideabi21-clang" main.c -o libmain_32.so $CFLAGS \
-          -L./raylib/b32/raylib $LINK_FLAGS
+        # Собираем .so библиотеку. ВАЖНО: порядок аргументов имеет значение!
+        "$TOOLCHAIN/aarch64-linux-android21-clang" main.o -o libmain.so \
+          -shared -fPIC \
+          -L./raylib/build/raylib \
+          -Wl,--whole-archive -lraylib -Wl,--no-whole-archive \
+          -Wl,-soname,libmain.so \
+          -landroid -llog -lGLESv2 -lEGL -lm -lc
 
     - name: Package APK
       run: |
         BT="$ANDROID_HOME/build-tools/34.0.0"
-        mkdir -p staging/lib/arm64-v8a staging/lib/armeabi-v7a
-        cp libmain_64.so staging/lib/arm64-v8a/libmain.so
-        cp libmain_32.so staging/lib/armeabi-v7a/libmain.so
-
+        # Готовим структуру
+        mkdir -p staging/lib/arm64-v8a
+        cp libmain.so staging/lib/arm64-v8a/libmain.so
+        
+        # Сборка
         "$BT/aapt" package -f -M AndroidManifest.xml -I "$ANDROID_HOME/platforms/android-34/android.jar" -F unsigned.apk staging/
         "$BT/zipalign" -v 4 unsigned.apk aligned.apk
         
+        # Подпись
         keytool -genkey -v -keystore d.keystore -storepass android -alias a -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=G"
         "$BT/apksigner" sign --ks d.keystore --ks-pass pass:android --v1-signing-enabled true --v2-signing-enabled true --out Geometrium2D.apk aligned.apk
 
     - name: Upload
       uses: actions/upload-artifact@v4
       with:
-        name: Geometrium-Final
+        name: Geometrium-Test
         path: Geometrium2D.apk
