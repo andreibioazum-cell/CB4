@@ -32,7 +32,7 @@ static void handle_cmd(struct android_app* app, int32_t cmd) {
         e->joy.centerY = e->height - 150;
         e->joy.radius = 80;
 
-        // Загрузка текстуры (без изменений)
+        // Загрузка текстуры
         AAssetManager* mgr = app->activity->assetManager;
         AAsset* asset = AAssetManager_open(mgr, "cube.png", AASSET_MODE_BUFFER);
         if (asset) {
@@ -62,7 +62,6 @@ static int32_t handle_input(struct android_app* app, AInputEvent* event) {
     struct engine* e = (struct engine*)app->userData;
     if (AInputEvent_getType(event) == AINPUT_EVENT_TYPE_MOTION) {
         int action = AMotionEvent_getAction(event);
-        // Отпускание – сброс
         if (action == AMOTION_EVENT_ACTION_UP || action == AMOTION_EVENT_ACTION_CANCEL) {
             e->joy.dirX = e->joy.dirY = 0.0f;
             e->joy.touchOffX = e->joy.touchOffY = 0.0f;
@@ -73,7 +72,7 @@ static int32_t handle_input(struct android_app* app, AInputEvent* event) {
         float dx = x - e->joy.centerX;
         float dy = y - e->joy.centerY;
         float len = sqrtf(dx*dx + dy*dy);
-        if (len > 10.0f) { // мёртвая зона
+        if (len > 10.0f) {
             e->joy.dirX = dx / len;
             e->joy.dirY = dy / len;
             if (len > e->joy.radius) {
@@ -114,15 +113,23 @@ void android_main(struct android_app* app) {
             e.px += e.joy.dirX * 10.0f;
             e.py += e.joy.dirY * 10.0f;
 
-            // Ограничение движения (чтобы не выходил за экран)
             float scale = 1.5f;
-            float halfSize = (e.tex_width / 2.0f) * scale;
-            if (e.px < halfSize) e.px = halfSize;
-            if (e.px > e.width - halfSize) e.px = e.width - halfSize;
-            if (e.py < halfSize) e.py = halfSize;
-            if (e.py > e.height - halfSize) e.py = e.height - halfSize;
+            // Ограничиваем позицию, чтобы текстура полностью помещалась
+            if (e.tex_ready) {
+                float halfW = (e.tex_width * scale) / 2.0f;
+                float halfH = (e.tex_height * scale) / 2.0f;
+                if (e.px < halfW) e.px = halfW;
+                if (e.px > e.width - halfW) e.px = e.width - halfW;
+                if (e.py < halfH) e.py = halfH;
+                if (e.py > e.height - halfH) e.py = e.height - halfH;
+            } else {
+                float half = 40.0f; // fallback квадрат
+                if (e.px < half) e.px = half;
+                if (e.px > e.width - half) e.px = e.width - half;
+                if (e.py < half) e.py = half;
+                if (e.py > e.height - half) e.py = e.height - half;
+            }
 
-            // Поворот
             if (e.joy.dirX != 0.0f || e.joy.dirY != 0.0f)
                 e.current_angle = atan2f(e.joy.dirX, -e.joy.dirY);
 
