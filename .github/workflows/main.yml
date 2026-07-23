@@ -1,4 +1,4 @@
-name: Build Raymob
+name: Auto Raymob Build
 
 on: [push, workflow_dispatch]
 
@@ -9,7 +9,15 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    - name: Set up JDK
+    - name: Clone Raymob Template
+      run: |
+        git clone https://github.com/raylib-extras/raymob.git project
+
+    - name: Replace main.c
+      run: |
+        cp main.c project/app/src/main/cpp/main.c
+
+    - name: Set up Java
       uses: actions/setup-java@v4
       with:
         distribution: temurin
@@ -18,19 +26,19 @@ jobs:
     - name: Setup Android SDK
       uses: android-actions/setup-android@v3
 
-    - name: Accept Licenses & Install NDK
+    - name: Install NDK
       run: |
         yes | sdkmanager --licenses
         sdkmanager "ndk;25.2.9519653"
 
-    - name: Grant execute permission
-      run: chmod +x gradlew
-
-    - name: Build Release APK
-      run: ./gradlew assembleRelease
+    - name: Build APK
+      run: |
+        cd project
+        chmod +x gradlew
+        ./gradlew assembleRelease
 
     - name: Upload APK
       uses: actions/upload-artifact@v4
       with:
         name: Geometrium
-        path: app/build/outputs/apk/release/app-release.apk
+        path: project/app/build/outputs/apk/release/app-release.apk
