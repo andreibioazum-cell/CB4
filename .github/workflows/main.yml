@@ -30,7 +30,7 @@ jobs:
         mkdir -p staging/lib/arm64-v8a staging/lib/armeabi-v7a staging/assets
         cp libmain_64.so staging/lib/arm64-v8a/libmain.so
         cp libmain_32.so staging/lib/armeabi-v7a/libmain.so
-        cp cube.png staging/assets/  # Копируем текстуру в assets
+        cp cube.png staging/assets/  # Копируем cube.png в assets
         
         SDK_ROOT=$ANDROID_HOME
         BT="$SDK_ROOT/build-tools/34.0.0"
