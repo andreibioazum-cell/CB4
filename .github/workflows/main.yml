@@ -12,13 +12,6 @@ jobs:
       uses: nttld/setup-ndk@v1
       with:
         ndk-version: r25c
-        add-to-path: true
-
-    - name: Install tools
-      run: sudo apt-get install -y cmake
-
-    - name: Setup Android SDK
-      uses: android-actions/setup-android@v3
 
     - name: Install SDK packages
       run: |
@@ -28,54 +21,32 @@ jobs:
     - name: Clone Raylib
       run: git clone --depth 1 --branch 5.0 https://github.com/raysan5/raylib.git
 
-    - name: Build Raylib for Android arm64
+    - name: Build Raylib Android
       run: |
-        mkdir -p raylib/build_android
-        cd raylib/build_android
+        mkdir -p raylib/build && cd raylib/build
         cmake .. \
-          -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_ROOT/build/cmake/android.toolchain.cmake \
+          -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake \
           -DANDROID_ABI=arm64-v8a \
           -DANDROID_PLATFORM=android-21 \
           -DPLATFORM=Android \
           -DBUILD_EXAMPLES=OFF \
           -DBUILD_GAMES=OFF \
-          -DWITH_PIC=ON
+          -DCMAKE_BUILD_TYPE=Release
         make -j$(nproc)
 
-    - name: Compile Game
+    - name: Build Game
       run: |
-        TOOLCHAIN="$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/bin"
-        GLUE_SRC="$ANDROID_NDK_ROOT/sources/android/native_app_glue"
-        RAYLIB_SRC="./raylib/src"
-        RAYLIB_LIB="./raylib/build_android/raylib"
-
-        # Компилируем glue отдельно как объектный файл
-        "$TOOLCHAIN/aarch64-linux-android21-clang" \
-          -c "$GLUE_SRC/android_native_app_glue.c" \
-          -o glue.o \
-          -I"$GLUE_SRC" \
-          -fPIC -O2
-
-        # Компилируем main.c
-        "$TOOLCHAIN/aarch64-linux-android21-clang" \
-          -c main.c \
-          -o main.o \
-          -I"$RAYLIB_SRC" \
-          -I"$GLUE_SRC" \
-          -DPLATFORM_ANDROID \
-          -DGRAPHICS_API_OPENGL_ES2 \
-          -fPIC -O2
-
-        # Линкуем всё вместе
-        "$TOOLCHAIN/aarch64-linux-android21-clang" \
-          -o libmain.so \
-          main.o glue.o \
-          -shared -fPIC \
-          -L"$RAYLIB_LIB" \
+        TOOLCHAIN="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin"
+        
+        # Компилируем только наш main.c
+        # Raylib УЖЕ содержит в себе native_app_glue, второй раз его добавлять нельзя!
+        "$TOOLCHAIN/aarch64-linux-android21-clang" main.c -o libmain.so \
+          -I./raylib/src \
+          -L./raylib/build/raylib \
+          -shared -fPIC -O2 \
+          -DPLATFORM_ANDROID -DGRAPHICS_API_OPENGL_ES2 \
           -Wl,--whole-archive -lraylib -Wl,--no-whole-archive \
-          -Wl,-u,ANativeActivity_onCreate \
-          -landroid -llog -lGLESv2 -lEGL -lm -lc \
-          -Wl,--no-undefined
+          -landroid -llog -lGLESv2 -lEGL -lm -lc
 
     - name: Package APK
       run: |
@@ -83,29 +54,17 @@ jobs:
         mkdir -p staging/lib/arm64-v8a
         cp libmain.so staging/lib/arm64-v8a/libmain.so
 
-        "$BT/aapt" package -f \
-          -M AndroidManifest.xml \
+        # Создаем пакет
+        "$BT/aapt" package -f -M AndroidManifest.xml \
           -I "$ANDROID_HOME/platforms/android-33/android.jar" \
           -F unsigned.apk staging/
 
+        # Выравнивание
         "$BT/zipalign" -v 4 unsigned.apk aligned.apk
 
-        keytool -genkey -v \
-          -keystore key.keystore \
-          -storepass android \
-          -alias mykey \
-          -keypass android \
-          -keyalg RSA \
-          -keysize 2048 \
-          -validity 10000 \
-          -dname "CN=Geometrium"
-
-        "$BT/apksigner" sign \
-          --ks key.keystore \
-          --ks-pass pass:android \
-          --v1-signing-enabled true \
-          --v2-signing-enabled true \
-          --out Geometrium2D.apk aligned.apk
+        # Подпись
+        keytool -genkey -v -keystore k.keystore -storepass android -alias a -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=G"
+        "$BT/apksigner" sign --ks k.keystore --ks-pass pass:android --out Geometrium2D.apk aligned.apk
 
     - name: Upload APK
       uses: actions/upload-artifact@v4
