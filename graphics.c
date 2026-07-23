@@ -1,23 +1,20 @@
 #include "graphics.h"
-#include <arm_neon.h>
 #include <string.h>
 
-// Быстрая очистка экрана через NEON
 void graphics_clear(RenderBuffer* rb, uint32_t color) {
-    uint32_t* dest = rb->pixels;
-    int count = rb->stride * rb->height;
-    uint32x4_t v_color = vdupq_n_u32(color);
-    int i = 0;
-    for (; i <= count - 4; i += 4) {
-        vst1q_u32(&dest[i], v_color);
+    if (!rb->pixels) return;
+    // Современный компилятор превратит этот цикл в быстрый memset или векторные инструкции сам
+    int total = rb->height * rb->stride;
+    for (int i = 0; i < total; i++) {
+        rb->pixels[i] = color;
     }
-    for (; i < count; i++) dest[i] = color;
 }
 
-// Быстрая отрисовка картинки с прозрачностью
 void graphics_draw_image(RenderBuffer* rb, Image* img, int x, int y) {
     if (!rb->pixels || !img || !img->pixels) return;
-    int x0 = x - img->width / 2, y0 = y - img->height / 2;
+    
+    int x0 = x - img->width / 2;
+    int y0 = y - img->height / 2;
     
     for (int iy = 0; iy < img->height; iy++) {
         int sy = y0 + iy;
@@ -31,21 +28,24 @@ void graphics_draw_image(RenderBuffer* rb, Image* img, int x, int y) {
             if (sx < 0 || sx >= rb->width) continue;
             
             uint32_t p = src[ix];
-            uint32_t a = (p >> 24) & 0xFF;
+            uint32_t a = (p >> 24) & 0xFF; // Альфа-канал
             
-            if (a == 255) dst[sx] = p;
-            else if (a > 0) {
+            if (a == 255) {
+                dst[sx] = p; // Полностью непрозрачный
+            } else if (a > 0) {
+                // Безопасное смешивание (без переполнения uint32)
                 uint32_t d = dst[sx];
-                // Оптимизированный "фокус" смешивания без деления
-                uint32_t rb_bits = ((p & 0xFF00FF) * a + (d & 0xFF00FF) * (255 - a)) >> 8;
-                uint32_t g_bits  = ((p & 0x00FF00) * a + (d & 0x00FF00) * (255 - a)) >> 8;
-                dst[sx] = 0xFF000000 | (rb_bits & 0xFF00FF) | (g_bits & 0x00FF00);
+                uint32_t r = (((p & 0xFF) * a) + ((d & 0xFF) * (255 - a))) >> 8;
+                uint32_t g = ((((p >> 8) & 0xFF) * a) + (((d >> 8) & 0xFF) * (255 - a))) >> 8;
+                uint32_t b = ((((p >> 16) & 0xFF) * a) + (((d >> 16) & 0xFF) * (255 - a))) >> 8;
+                dst[sx] = 0xFF000000 | (b << 16) | (g << 8) | r;
             }
         }
     }
 }
 
 void graphics_draw_circle(RenderBuffer* rb, int cx, int cy, int r, uint32_t color) {
+    if (!rb->pixels) return;
     int r2 = r * r;
     for (int y = -r; y <= r; y++) {
         int sy = cy + y;
@@ -61,7 +61,8 @@ void graphics_draw_circle(RenderBuffer* rb, int cx, int cy, int r, uint32_t colo
 }
 
 void graphics_draw_ring(RenderBuffer* rb, int cx, int cy, int r, int t, uint32_t color) {
-    int r_out2 = r * r, r_in2 = (r - t) * (r - t);
+    if (!rb->pixels) return;
+    int r2 = r * r, r_in2 = (r - t) * (r - t);
     for (int y = -r; y <= r; y++) {
         int sy = cy + y;
         if (sy < 0 || sy >= rb->height) continue;
@@ -71,7 +72,7 @@ void graphics_draw_ring(RenderBuffer* rb, int cx, int cy, int r, int t, uint32_t
             int sx = cx + x;
             if (sx < 0 || sx >= rb->width) continue;
             int d2 = x * x + y2;
-            if (d2 <= r_out2 && d2 >= r_in2) line[sx] = color;
+            if (d2 <= r2 && d2 >= r_in2) line[sx] = color;
         }
     }
 }
