@@ -13,41 +13,22 @@ jobs:
       run: |
         TC="$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/bin"
         GLUE="$ANDROID_NDK_ROOT/sources/android/native_app_glue"
-        # Собираем все исходники
         SRCS="main.c graphics.c ui.c $GLUE/android_native_app_glue.c"
         FLAGS="-O3 -s -fPIC -shared -I. -I$GLUE -landroid -llog -lm"
-        
         "$TC/aarch64-linux-android21-clang" $SRCS -o libmain_64.so $FLAGS
         "$TC/armv7a-linux-androideabi21-clang" $SRCS -o libmain_32.so $FLAGS -mfpu=neon
-
     - name: Package
       run: |
-        # Создаем чистую структуру для сборки
-        mkdir -p st/lib/arm64-v8a
-        mkdir -p st/lib/armeabi-v7a
-        mkdir -p st/assets
-        
-        # Копируем библиотеки
+        rm -rf st
+        mkdir -p st/lib/arm64-v8a st/lib/armeabi-v7a st/assets
         cp libmain_64.so st/lib/arm64-v8a/libmain.so
         cp libmain_32.so st/lib/armeabi-v7a/libmain.so
-        
-        # Копируем картинку из папки assets репозитория в папку активов сборки
         cp assets/cube_ordinary.png st/assets/
-        
         BT="$ANDROID_HOME/build-tools/34.0.0"
-        
-        # Упаковка: убрали лишний флаг -A, так как aapt сам подхватит папку assets внутри ./st/
-        # ВНИМАНИЕ: Проверь, чтобы файл назывался AndroidManifest.xml (с большой буквы A)
-        "$BT/aapt" package -f -M AndroidManifest.xml \
-                   -I "$ANDROID_HOME/platforms/android-34/android.jar" \
-                   -F u.apk ./st/
-        
+        "$BT/aapt" package -f -M AndroidManifest.xml -I "$ANDROID_HOME/platforms/android-34/android.jar" -F u.apk ./st/
         "$BT/zipalign" -v 4 u.apk a.apk
-        
         keytool -genkey -v -keystore d.jks -storepass android -alias d -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=D"
-        
         "$BT/apksigner" sign --ks d.jks --ks-pass pass:android --out Game.apk a.apk
-
     - uses: actions/upload-artifact@v4
       with:
         name: Game
