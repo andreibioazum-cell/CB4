@@ -10,7 +10,7 @@ int main(void)
     {
         BeginDrawing();
             ClearBackground(DARKBLUE);
-            DrawText("AUTO RAYMOB BUILD", 80, 80, 40, WHITE);
+            DrawText("RAYLIB ANDROID AUTO", 60, 60, 40, WHITE);
         EndDrawing();
     }
 
