@@ -14,29 +14,26 @@ struct engine {
     Joystick joy;
     Image img;
     float x, y;
-    int init;
+    int can_draw;
 };
 
-void load_assets(struct engine* e) {
+void load_player_img(struct engine* e) {
     if (!e->app->activity->assetManager) return;
-    
     AAsset* a = AAssetManager_open(e->app->activity->assetManager, "cube_ordinary.png", AASSET_MODE_BUFFER);
     if (!a) return;
-    
+
     size_t s = AAsset_getLength(a);
-    if (s > 0) {
-        unsigned char* b = malloc(s);
-        if (b) {
-            AAsset_read(a, b, s);
-            int w, h, c;
-            unsigned char* d = stbi_load_from_memory(b, (int)s, &w, &h, &c, 4);
-            if (d) {
-                e->img.pixels = (uint32_t*)d;
-                e->img.width = w;
-                e->img.height = h;
-            }
-            free(b);
+    unsigned char* buf = (unsigned char*)malloc(s);
+    if (buf) {
+        AAsset_read(a, buf, s);
+        int w, h, c;
+        unsigned char* decoded = stbi_load_from_memory(buf, (int)s, &w, &h, &c, 4);
+        if (decoded) {
+            e->img.pixels = (uint32_t*)decoded;
+            e->img.width = w;
+            e->img.height = h;
         }
+        free(buf);
     }
     AAsset_close(a);
 }
@@ -46,20 +43,19 @@ static void handle_cmd(struct android_app* app, int32_t cmd) {
     switch (cmd) {
         case APP_CMD_INIT_WINDOW:
             if (app->window) {
+                // Принудительно ставим 32-битный формат
                 ANativeWindow_setBuffersGeometry(app->window, 0, 0, WINDOW_FORMAT_RGBA_8888);
-                int w = ANativeWindow_getWidth(app->window);
-                int h = ANativeWindow_getHeight(app->window);
-                if (!e->init) {
-                    e->x = w / 2.0f;
-                    e->y = h / 2.0f;
-                    e->init = 1;
-                }
-                e->joy.cx = 200; e->joy.cy = h - 200; e->joy.r = 120;
-                load_assets(e);
+                e->x = ANativeWindow_getWidth(app->window) / 2.0f;
+                e->y = ANativeWindow_getHeight(app->window) / 2.0f;
+                e->joy.cx = 200;
+                e->joy.cy = ANativeWindow_getHeight(app->window) - 200;
+                e->joy.r = 120;
+                load_player_img(e);
+                e->can_draw = 1;
             }
             break;
         case APP_CMD_TERM_WINDOW:
-            e->init = 0;
+            e->can_draw = 0;
             break;
     }
 }
@@ -69,8 +65,8 @@ static int32_t handle_input(struct android_app* app, AInputEvent* ev) {
     if (AInputEvent_getType(ev) == AINPUT_EVENT_TYPE_MOTION) {
         float mx = AMotionEvent_getX(ev, 0);
         float my = AMotionEvent_getY(ev, 0);
-        float dx = mx - (float)e->joy.cx;
-        float dy = my - (float)e->joy.cy;
+        float dx = mx - e->joy.cx;
+        float dy = my - e->joy.cy;
         float l = sqrtf(dx*dx + dy*dy);
         if (l > 10.0f) {
             e->joy.dx = dx/l; e->joy.dy = dy/l;
@@ -87,26 +83,30 @@ void android_main(struct android_app* app) {
     app->userData = &e;
     app->onAppCmd = handle_cmd;
     app->onInputEvent = handle_input;
-    
+
     while (1) {
-        int id; struct android_poll_source* s;
+        int id;
+        struct android_poll_source* s;
         while ((id = ALooper_pollOnce(0, NULL, NULL, (void**)&s)) >= 0) {
             if (s) s->process(app, s);
             if (app->destroyRequested) return;
         }
-        
-        if (e.init && app->window) {
-            e.x += e.joy.dx * 10.0f;
-            e.y += e.joy.dy * 10.0f;
-            
+
+        if (e.can_draw && app->window) {
+            e.x += e.joy.dx * 8.0f;
+            e.y += e.joy.dy * 8.0f;
+
             ANativeWindow_Buffer b;
+            // Пытаемся заблокировать окно для рисования
             if (ANativeWindow_lock(app->window, &b, NULL) == 0) {
-                RenderBuffer rb = { (uint32_t*)b.bits, b.width, b.height, b.stride };
-                graphics_clear(&rb, 0xFFCCCCCC);
-                if (e.img.pixels) {
-                    graphics_draw_image(&rb, &e.img, (int)e.x, (int)e.y);
+                if (b.bits != NULL) {
+                    RenderBuffer rb = { (uint32_t*)b.bits, b.width, b.height, b.stride };
+                    graphics_clear(&rb, 0xFFCCCCCC);
+                    if (e.img.pixels) {
+                        graphics_draw_image(&rb, &e.img, (int)e.x, (int)e.y);
+                    }
+                    ui_draw(&rb, &e.joy);
                 }
-                ui_draw(&rb, &e.joy);
                 ANativeWindow_unlockAndPost(app->window);
             }
         }
