@@ -10,7 +10,7 @@ int main(void)
     {
         BeginDrawing();
             ClearBackground(DARKBLUE);
-            DrawText("RAYMOB WORKS", 80, 80, 40, WHITE);
+            DrawText("AUTO RAYMOB BUILD", 80, 80, 40, WHITE);
         EndDrawing();
     }
 
