@@ -55,3 +55,31 @@ void graphics_draw_ring(RenderBuffer* rb, int cx, int cy, int r, int thickness, 
         }
     }
 }
+
+void graphics_draw_texture(RenderBuffer* rb, int cx, int cy, 
+                           uint32_t* tex, int tw, int th) {
+    int left = cx - tw/2;
+    int top  = cy - th/2;
+    int right = left + tw;
+    int bottom = top + th;
+    
+    if (left < 0) left = 0;
+    if (top < 0) top = 0;
+    if (right > rb->width) right = rb->width;
+    if (bottom > rb->height) bottom = rb->height;
+    if (left >= right || top >= bottom) return;
+
+    int src_x_start = left - (cx - tw/2);
+    int src_y_start = top - (cy - th/2);
+    
+    for (int y = top; y < bottom; ++y) {
+        uint32_t* out = rb->pixels + y * rb->stride;
+        uint32_t* src = tex + (src_y_start + (y - top)) * tw + src_x_start;
+        for (int x = left; x < right; ++x) {
+            uint32_t pix = *src++;
+            if ((pix & 0xFF000000) != 0) { // Рисуем только непрозрачные пиксели
+                out[x] = pix;
+            }
+        }
+    }
+}
