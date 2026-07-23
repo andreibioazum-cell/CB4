@@ -17,6 +17,7 @@ struct engine {
     uint32_t* tex_pixels;
     int tex_width, tex_height;
     int tex_ready;
+    float current_angle; // текущий угол поворота игрока
 };
 
 static void handle_cmd(struct android_app* app, int32_t cmd) {
@@ -29,8 +30,8 @@ static void handle_cmd(struct android_app* app, int32_t cmd) {
         e->py = e->height / 2;
         e->joy.centerX = 200; 
         e->joy.centerY = e->height - 200;
-        e->joy.radius = 120;
-        
+        e->joy.radius = 80;   // новый радиус – меньше
+
         // Загрузка текстуры из assets
         AAssetManager* mgr = app->activity->assetManager;
         AAsset* asset = AAssetManager_open(mgr, "cube.png", AASSET_MODE_BUFFER);
@@ -83,6 +84,7 @@ static int32_t handle_input(struct android_app* app, AInputEvent* event) {
 
 void android_main(struct android_app* app) {
     struct engine e = {0};
+    e.current_angle = 0.0f;
     app->userData = &e;
     app->onAppCmd = handle_cmd;
     app->onInputEvent = handle_input;
@@ -93,7 +95,6 @@ void android_main(struct android_app* app) {
         while ((ident = ALooper_pollOnce(0, NULL, NULL, (void**)&source)) >= 0) {
             if (source) source->process(app, source);
             if (app->destroyRequested) {
-                // Освобождаем память
                 if (e.tex_pixels) free(e.tex_pixels);
                 return;
             }
@@ -103,16 +104,22 @@ void android_main(struct android_app* app) {
             e.px += e.joy.dirX * 10.0f;
             e.py += e.joy.dirY * 10.0f;
 
+            // Вычисляем угол поворота (0 – вверх, положительный – по часовой)
+            if (e.joy.dirX != 0.0f || e.joy.dirY != 0.0f) {
+                e.current_angle = atan2f(e.joy.dirX, -e.joy.dirY);
+            }
+
             ANativeWindow_Buffer winBuf;
             if (ANativeWindow_lock(app->window, &winBuf, NULL) == 0) {
                 RenderBuffer rb = { (uint32_t*)winBuf.bits, winBuf.width, winBuf.height, winBuf.stride };
                 
                 graphics_clear(&rb, 0xFFCCCCCC);
                 
-                // Рисуем игрока текстурой или прямоугольником
+                // Рисуем игрока с масштабом 2.0 и поворотом
                 if (e.tex_ready) {
-                    graphics_draw_texture(&rb, (int)e.px, (int)e.py, 
-                                         e.tex_pixels, e.tex_width, e.tex_height);
+                    graphics_draw_texture_ex(&rb, (int)e.px, (int)e.py,
+                                             e.tex_pixels, e.tex_width, e.tex_height,
+                                             e.current_angle, 2.0f);
                 } else {
                     graphics_draw_rect(&rb, (int)e.px, (int)e.py, 80, 0xFFEE7722);
                 }
