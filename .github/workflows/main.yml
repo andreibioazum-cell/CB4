@@ -1,40 +1,90 @@
-name: Build Modular Hardcore 2D
+name: Build Hardcore 2D with Assets
 on: [push, workflow_dispatch]
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
-    - uses: android-actions/setup-android@v3
-    - uses: nttld/setup-ndk@v1
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+
+    - name: Setup Android SDK
+      uses: android-actions/setup-android@v3
+
+    - name: Install NDK
+      uses: nttld/setup-ndk@v1
       with:
         ndk-version: r25c
-    
-    - name: Build
+
+    - name: Build Shared Libraries (CPU Optimized)
       run: |
         NDK_ROOT=$ANDROID_NDK_ROOT
         TOOLCHAIN="$NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/bin"
         GLUE="$NDK_ROOT/sources/android/native_app_glue"
-        # Компилируем все файлы вместе
-        SRCS="main.c graphics.c ui.c $GLUE/android_native_app_glue.c"
-        FLAGS="-O3 -s -fPIC -shared -I. -I$GLUE -landroid -llog -lm"
         
+        # Список всех исходных файлов
+        SRCS="main.c graphics.c ui.c $GLUE/android_native_app_glue.c"
+        
+        # Общие флаги: Максимальная оптимизация -O3 и работа с памятью
+        FLAGS="-O3 -s -fPIC -shared -I. -I$GLUE -landroid -llog -lm"
+
+        # Сборка для 64-бит (современные телефоны)
         "$TOOLCHAIN/aarch64-linux-android21-clang" $SRCS -o libmain_64.so $FLAGS
+
+        # Сборка для 32-бит + принудительный разгон NEON
         "$TOOLCHAIN/armv7a-linux-androideabi21-clang" $SRCS -o libmain_32.so $FLAGS -mfpu=neon
-    
-    - name: Package
+
+    - name: Prepare Staging Directory
       run: |
-        mkdir -p staging/lib/arm64-v8a staging/lib/armeabi-v7a
+        # Создаем структуру папок для APK
+        mkdir -p staging/lib/arm64-v8a
+        mkdir -p staging/lib/armeabi-v7a
+        mkdir -p staging/assets
+        
+        # Копируем библиотеки
         cp libmain_64.so staging/lib/arm64-v8a/libmain.so
         cp libmain_32.so staging/lib/armeabi-v7a/libmain.so
+        
+        # Копируем картинку в assets (важно для работы stbi_load)
+        if [ -f "cube_ordinary.png" ]; then
+          cp cube_ordinary.png staging/assets/
+        else
+          echo "WARNING: cube_ordinary.png not found in root!"
+        fi
+
+    - name: Package APK
+      run: |
         SDK_ROOT=$ANDROID_HOME
         BT="$SDK_ROOT/build-tools/34.0.0"
-        "$BT/aapt" package -f -M ./AndroidManifest.xml -I "$SDK_ROOT/platforms/android-34/android.jar" -F unsigned.apk ./staging/
-        "$BT/zipalign" -v 4 unsigned.apk aligned.apk
-        keytool -genkey -v -keystore debug.keystore -storepass android -alias debug -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Debug"
-        "$BT/apksigner" sign --ks debug.keystore --ks-pass pass:android --out Game.apk aligned.apk
+        PLATFORM_JAR="$SDK_ROOT/platforms/android-34/android.jar"
         
-    - uses: actions/upload-artifact@v4
+        # 1. Сборка ресурсов и упаковка (флаг -A указывает на папку assets)
+        "$BT/aapt" package -f -M ./AndroidManifest.xml \
+                   -I "$PLATFORM_JAR" \
+                   -A staging/assets/ \
+                   -F unsigned.apk ./staging/
+
+        # 2. Выравнивание APK
+        "$BT/zipalign" -v 4 unsigned.apk aligned.apk
+
+        # 3. Создание временного ключа для подписи
+        keytool -genkey -v -keystore debug.keystore -storepass android -alias debug \
+                -keypass android -keyalg RSA -keysize 2048 -validity 10000 \
+                -dname "CN=AndroidDebug, O=Android, C=US"
+
+        # 4. Подпись APK
+        "$BT/apksigner" sign --ks debug.keystore \
+                         --ks-pass pass:android \
+                         --out Geometrium2D.apk aligned.apk
+
+    - name: Upload APK
+      uses: actions/upload-artifact@v4
       with:
-        name: Game-APK
-        path: Game.apk
+        name: Geometrium2D-Build
+        path: Geometrium2D.apk
