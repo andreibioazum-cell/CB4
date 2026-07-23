@@ -18,37 +18,49 @@ struct engine {
 };
 
 void load_assets(struct engine* e) {
+    if (!e->app->activity->assetManager) return;
+    
     AAsset* a = AAssetManager_open(e->app->activity->assetManager, "cube_ordinary.png", AASSET_MODE_BUFFER);
     if (!a) return;
+    
     size_t s = AAsset_getLength(a);
-    unsigned char* b = malloc(s);
-    AAsset_read(a, b, s);
-    AAsset_close(a);
-    int w, h, c;
-    unsigned char* d = stbi_load_from_memory(b, (int)s, &w, &h, &c, 4);
-    free(b);
-    if (d) { 
-        e->img.pixels = (uint32_t*)d; 
-        e->img.width = w; 
-        e->img.height = h; 
+    if (s > 0) {
+        unsigned char* b = malloc(s);
+        if (b) {
+            AAsset_read(a, b, s);
+            int w, h, c;
+            unsigned char* d = stbi_load_from_memory(b, (int)s, &w, &h, &c, 4);
+            if (d) {
+                e->img.pixels = (uint32_t*)d;
+                e->img.width = w;
+                e->img.height = h;
+            }
+            free(b);
+        }
     }
+    AAsset_close(a);
 }
 
 static void handle_cmd(struct android_app* app, int32_t cmd) {
     struct engine* e = (struct engine*)app->userData;
-    if (cmd == APP_CMD_INIT_WINDOW && app->window) {
-        ANativeWindow_setBuffersGeometry(app->window, 0, 0, WINDOW_FORMAT_RGBA_8888);
-        int w = ANativeWindow_getWidth(app->window);
-        int h = ANativeWindow_getHeight(app->window);
-        if (!e->init) {
-            e->x = w / 2.0f;
-            e->y = h / 2.0f;
-            e->init = 1;
-        }
-        e->joy.cx = 200; 
-        e->joy.cy = h - 200; 
-        e->joy.r = 120;
-        load_assets(e);
+    switch (cmd) {
+        case APP_CMD_INIT_WINDOW:
+            if (app->window) {
+                ANativeWindow_setBuffersGeometry(app->window, 0, 0, WINDOW_FORMAT_RGBA_8888);
+                int w = ANativeWindow_getWidth(app->window);
+                int h = ANativeWindow_getHeight(app->window);
+                if (!e->init) {
+                    e->x = w / 2.0f;
+                    e->y = h / 2.0f;
+                    e->init = 1;
+                }
+                e->joy.cx = 200; e->joy.cy = h - 200; e->joy.r = 120;
+                load_assets(e);
+            }
+            break;
+        case APP_CMD_TERM_WINDOW:
+            e->init = 0;
+            break;
     }
 }
 
@@ -60,12 +72,10 @@ static int32_t handle_input(struct android_app* app, AInputEvent* ev) {
         float dx = mx - (float)e->joy.cx;
         float dy = my - (float)e->joy.cy;
         float l = sqrtf(dx*dx + dy*dy);
-        if (l > 10.0f) { 
-            e->joy.dx = dx/l; 
-            e->joy.dy = dy/l; 
-        } else { 
-            e->joy.dx = 0; 
-            e->joy.dy = 0; 
+        if (l > 10.0f) {
+            e->joy.dx = dx/l; e->joy.dy = dy/l;
+        } else {
+            e->joy.dx = 0; e->joy.dy = 0;
         }
         return 1;
     }
@@ -77,15 +87,18 @@ void android_main(struct android_app* app) {
     app->userData = &e;
     app->onAppCmd = handle_cmd;
     app->onInputEvent = handle_input;
+    
     while (1) {
         int id; struct android_poll_source* s;
         while ((id = ALooper_pollOnce(0, NULL, NULL, (void**)&s)) >= 0) {
             if (s) s->process(app, s);
             if (app->destroyRequested) return;
         }
+        
         if (e.init && app->window) {
-            e.x += e.joy.dx * 10.0f; 
+            e.x += e.joy.dx * 10.0f;
             e.y += e.joy.dy * 10.0f;
+            
             ANativeWindow_Buffer b;
             if (ANativeWindow_lock(app->window, &b, NULL) == 0) {
                 RenderBuffer rb = { (uint32_t*)b.bits, b.width, b.height, b.stride };
