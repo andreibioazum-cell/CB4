@@ -22,44 +22,20 @@ jobs:
         yes | sdkmanager --licenses
         sdkmanager "platforms;android-33" "build-tools;33.0.2" "cmake;3.22.1" "ndk;25.2.9519653"
 
-    - name: Clone Raylib Android Template
+    - name: Clone Raylib and Template
       run: |
         git clone --depth 1 https://github.com/raysan5/raylib.git
-        git clone --depth 1 https://github.com/raysan5/raylib-game-template.git game_template
-
-    - name: Prepare Project
-      run: |
-        # Копируем шаблон
-        cp -r game_template/. project/
+        git clone --depth 1 https://github.com/raysan5/raylib-game-template.git template
         
-        # Заменяем игровой файл на наш
-        cp main.c project/src/game.c
-        
-        # Копируем raylib в проект
-        cp -r raylib/src project/raylib/
+        # Смотрим структуру шаблона
+        echo "=== TEMPLATE ROOT ==="
+        ls -la template/
+        echo "=== TEMPLATE SUBDIRS ==="
+        find template -type f -name "gradlew" 2>/dev/null || echo "gradlew NOT FOUND"
+        find template -type f -name "*.gradle" 2>/dev/null || echo "No gradle files"
 
-    - name: Build with Gradle
-      run: |
-        cd project
-        chmod +x gradlew
-        ./gradlew assembleRelease \
-          -PANDROID_NDK_HOME=$ANDROID_HOME/ndk/25.2.9519653
-
-    - name: Sign APK
-      run: |
-        keytool -genkey -v -keystore d.keystore \
-          -storepass android -alias a -keypass android \
-          -keyalg RSA -keysize 2048 -validity 10000 \
-          -dname "CN=G"
-        
-        BT="$ANDROID_HOME/build-tools/33.0.2"
-        "$BT/apksigner" sign \
-          --ks d.keystore --ks-pass pass:android \
-          --out Geometrium2D.apk \
-          project/app/build/outputs/apk/release/app-release-unsigned.apk
-
-    - name: Upload APK
+    - name: Upload structure log
       uses: actions/upload-artifact@v4
       with:
-        name: Geometrium-Final
-        path: Geometrium2D.apk
+        name: structure-log
+        path: template/
