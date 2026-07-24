@@ -15,8 +15,6 @@ void graphics_clear(RenderBuffer* rb, uint32_t color);
 void graphics_draw_rect(RenderBuffer* rb, int x, int y, int size, uint32_t color);
 void graphics_draw_circle(RenderBuffer* rb, int cx, int cy, int r, uint32_t color);
 void graphics_draw_ring(RenderBuffer* rb, int cx, int cy, int r, int thickness, uint32_t color);
-
-// Рисует текстуру с поворотом (угол в радианах) и масштабом (scale)
 void graphics_draw_texture_ex(RenderBuffer* rb, int cx, int cy,
                               uint32_t* tex, int tw, int th,
                               float angle, float scale);
