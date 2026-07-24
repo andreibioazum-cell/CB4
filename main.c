@@ -16,7 +16,7 @@ struct engine {
     uint32_t* tex_pixels;
     int tex_width, tex_height;
     int tex_ready;
-    float current_angle;
+    // float current_angle; // больше не нужен
 };
 
 static void handle_cmd(struct android_app* app, int32_t cmd) {
@@ -32,7 +32,7 @@ static void handle_cmd(struct android_app* app, int32_t cmd) {
         e->joy.centerY = e->height - 150;
         e->joy.radius = 80;
 
-        // Загрузка текстуры
+        // Загрузка текстуры (без изменений)
         AAssetManager* mgr = app->activity->assetManager;
         AAsset* asset = AAssetManager_open(mgr, "cube.png", AASSET_MODE_BUFFER);
         if (asset) {
@@ -93,7 +93,6 @@ static int32_t handle_input(struct android_app* app, AInputEvent* event) {
 
 void android_main(struct android_app* app) {
     struct engine e = {0};
-    e.current_angle = 0.0f;
     app->userData = &e;
     app->onAppCmd = handle_cmd;
     app->onInputEvent = handle_input;
@@ -113,21 +112,18 @@ void android_main(struct android_app* app) {
             e.px += e.joy.dirX * 10.0f;
             e.py += e.joy.dirY * 10.0f;
 
+            // Масштаб 1.5 (как просили)
             float scale = 1.5f;
-            // Ограничиваем позицию, чтобы текстура полностью помещалась
+            // Ограничиваем позицию так же, как в первой версии (по половинному размеру)
             if (e.tex_ready) {
-                // Вычисляем реальный размер текстуры после масштабирования
-                float scaledW = e.tex_width * scale;
-                float scaledH = e.tex_height * scale;
-                // Половина размера для ограничения (отступ 5 пикселей для безопасности)
-                float halfW = scaledW / 2.0f + 5.0f;
-                float halfH = scaledH / 2.0f + 5.0f;
-                
+                float halfW = (e.tex_width * scale) / 2.0f;
+                float halfH = (e.tex_height * scale) / 2.0f;
                 if (e.px < halfW) e.px = halfW;
                 if (e.px > e.width - halfW) e.px = e.width - halfW;
                 if (e.py < halfH) e.py = halfH;
                 if (e.py > e.height - halfH) e.py = e.height - halfH;
             } else {
+                // fallback квадрат 80x80
                 float half = 40.0f;
                 if (e.px < half) e.px = half;
                 if (e.px > e.width - half) e.px = e.width - half;
@@ -135,17 +131,18 @@ void android_main(struct android_app* app) {
                 if (e.py > e.height - half) e.py = e.height - half;
             }
 
-            if (e.joy.dirX != 0.0f || e.joy.dirY != 0.0f)
-                e.current_angle = atan2f(e.joy.dirX, -e.joy.dirY);
+            // Поворот убран – игрок всегда смотрит вверх (текстура как есть)
+            // Если нужно поворачивать, можно вернуть, но тогда надо пересчитать границы по диагонали
 
             ANativeWindow_Buffer winBuf;
             if (ANativeWindow_lock(app->window, &winBuf, NULL) == 0) {
                 RenderBuffer rb = { (uint32_t*)winBuf.bits, winBuf.width, winBuf.height, winBuf.stride };
                 graphics_clear(&rb, 0xFFCCCCCC);
                 if (e.tex_ready) {
+                    // Рисуем текстуру без поворота (угол = 0)
                     graphics_draw_texture_ex(&rb, (int)e.px, (int)e.py,
                                              e.tex_pixels, e.tex_width, e.tex_height,
-                                             e.current_angle, scale);
+                                             0.0f, scale);
                 } else {
                     graphics_draw_rect(&rb, (int)e.px, (int)e.py, 80, 0xFFEE7722);
                 }
