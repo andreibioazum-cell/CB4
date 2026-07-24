@@ -19,7 +19,7 @@ jobs:
         NDK_ROOT=$ANDROID_NDK_ROOT
         TOOLCHAIN="$NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/bin"
         GLUE="$NDK_ROOT/sources/android/native_app_glue"
-        SRCS="main.c ui.c graphics.c $GLUE/android_native_app_glue.c"
+        SRCS="main.c graphics.c ui.c $GLUE/android_native_app_glue.c"
         FLAGS="-O3 -s -fPIC -shared -I. -I$GLUE -landroid -llog -lm"
 
         "$TOOLCHAIN/aarch64-linux-android21-clang" $SRCS -o libmain_64.so $FLAGS
