@@ -1,78 +1,71 @@
 #include <android_native_app_glue.h>
-#include <android/asset_manager.h>
-#include <stdlib.h>
 #include <math.h>
-#include "graphics.h"
-#include "ui.h"
-#define STB_IMAGE_IMPLEMENTATION
-#include "stb_image.h"
+#include <stdlib.h>
+#include <string.h>
 
-struct engine {
-    struct android_app* app;
-    Joystick joy;
-    float px, py, angle;
-    int w, h, tw, th;
-    uint32_t* tex;
-};
+typedef struct { float x, y, z; } Vec3;
+typedef struct { float x, y; } Vec2;
 
-static void handle_cmd(struct android_app* app, int32_t cmd) {
-    struct engine* e = (struct engine*)app->userData;
-    if (cmd == APP_CMD_INIT_WINDOW) {
-        e->w = ANativeWindow_getWidth(app->window);
-        e->h = ANativeWindow_getHeight(app->window);
-        e->px = e->w/2.0f; e->py = e->h/2.0f;
-        e->joy = (Joystick){150, e->h - 150, 80, 0, 0, 0, 0};
-        AAsset* a = AAssetManager_open(app->activity->assetManager, "cube.png", AASSET_MODE_BUFFER);
-        if (a) {
-            int n;
-            unsigned char* img = stbi_load_from_memory(AAsset_getBuffer(a), AAsset_getLength(a), &e->tw, &e->th, &n, 4);
-            e->tex = malloc(e->tw * e->th * 4);
-            for (int i = 0; i < e->tw * e->th; i++) {
-                uint8_t* p = &img[i*4];
-                e->tex[i] = (p[3]<<24)|(p[0]<<16)|(p[1]<<8)|p[2];
-            }
-            stbi_image_free(img); AAsset_close(a);
-        }
+float a = 0;
+
+void line(ANativeWindow_Buffer* b, int x0, int y0, int x1, int y1, uint32_t c) {
+    int dx = abs(x1-x0), sx = x0<x1 ? 1 : -1;
+    int dy = -abs(y1-y0), sy = y0<y1 ? 1 : -1;
+    int err = dx+dy, e2;
+    while(1) {
+        if(x0>=0 && x0<b->width && y0>=0 && y0<b->height)
+            ((uint32_t*)b->bits)[y0*b->stride + x0] = c;
+        if(x0==x1 && y0==y1) break;
+        e2 = 2*err;
+        if(e2>=dy) { err+=dy; x0+=sx; }
+        if(e2<=dx) { err+=dx; y0+=sy; }
     }
 }
 
-static int32_t handle_input(struct android_app* app, AInputEvent* ev) {
-    struct engine* e = (struct engine*)app->userData;
-    if (AInputEvent_getType(ev) == AINPUT_EVENT_TYPE_MOTION) {
-        int act = AMotionEvent_getAction(ev);
-        if (act == AMOTION_EVENT_ACTION_UP) { e->joy.dirX = e->joy.dirY = e->joy.tx = e->joy.ty = 0; return 1; }
-        float dx = AMotionEvent_getX(ev, 0) - e->joy.cx, dy = AMotionEvent_getY(ev, 0) - e->joy.cy;
-        float len = sqrtf(dx*dx + dy*dy);
-        if (len > 10.0f) {
-            e->joy.dirX = dx/len; e->joy.dirY = dy/len;
-            e->angle = atan2f(dy, dx) + 1.57f; // Вращение (90 градусов в радианах)
-            e->joy.tx = e->joy.dirX * (len > e->joy.r ? e->joy.r : len);
-            e->joy.ty = e->joy.dirY * (len > e->joy.r ? e->joy.r : len);
+void render(struct android_app* app) {
+    ANativeWindow_Buffer b;
+    if (ANativeWindow_lock(app->window, &b, NULL) < 0) return;
+    uint32_t* p = (uint32_t*)b.bits;
+    for(int i=0; i<b.height*b.stride; i++) p[i] = 0xFF000000;
+
+    Vec3 v[8] = {{-1,-1,-1},{1,-1,-1},{1,1,-1},{-1,1,-1},{-1,-1,1},{1,-1,1},{1,1,1},{-1,1,1}};
+    int ed[12][2] = {{0,1},{1,2},{2,3},{3,0},{4,5},{5,6},{6,7},{7,4},{0,4},{1,5},{2,6},{3,7}};
+    
+    a += 0.03f;
+    float s = sinf(a), c = cosf(a);
+
+    for(int i=0; i<12; i++) {
+        Vec3 r[2];
+        Vec2 p2d[2];
+        for(int j=0; j<2; j++) {
+            Vec3 t = v[ed[i][j]];
+            float x = t.x*c - t.z*s;
+            float z = t.x*s + t.z*c;
+            float y = t.y*c - z*s;
+            z = t.y*s + z*c;
+            float f = 600.0f / (z + 5.0f);
+            p2d[j].x = x*f + b.width/2.0f;
+            p2d[j].y = y*f + b.height/2.0f;
         }
-        return 1;
+        line(&b, p2d[0].x, p2d[0].y, p2d[1].x, p2d[1].y, 0xFF00FF00);
     }
-    return 0;
+    ANativeWindow_unlockAndPost(app->window);
+}
+
+void handle_cmd(struct android_app* app, int32_t cmd) {
+    if (cmd == APP_CMD_INIT_WINDOW) app->userData = (void*)1;
+    if (cmd == APP_CMD_TERM_WINDOW) app->userData = NULL;
 }
 
 void android_main(struct android_app* app) {
-    struct engine e = {0};
-    app->userData = &e; app->onAppCmd = handle_cmd; app->onInputEvent = handle_input;
-    while (1) {
-        int id; struct android_poll_source* src;
-        while ((id = ALooper_pollOnce(0, NULL, NULL, (void**)&src)) >= 0) {
-            if (src) src->process(app, src);
-            if (app->destroyRequested) return;
+    app->onAppCmd = handle_cmd;
+    while(1) {
+        int id, events;
+        struct android_poll_source* source;
+        while((id = ALooper_pollAll(app->userData ? 0 : -1, NULL, &events, (void**)&source)) >= 0) {
+            if(source) source->process(app, source);
+            if(app->destroyRequested) return;
         }
-        if (app->window) {
-            e.px += e.joy.dirX * 8.0f; e.py += e.joy.dirY * 8.0f;
-            ANativeWindow_Buffer wb;
-            if (ANativeWindow_lock(app->window, &wb, NULL) == 0) {
-                RenderBuffer rb = {(uint32_t*)wb.bits, wb.width, wb.height, wb.stride};
-                graphics_clear(&rb, 0xFFCCCCCC);
-                graphics_draw_texture(&rb, (int)e.px, (int)e.py, e.tex, e.tw, e.th, e.angle, 1.5f);
-                ui_draw_joystick(&rb, &e.joy);
-                ANativeWindow_unlockAndPost(app->window);
-            }
-        }
+        if(app->userData) render(app);
     }
 }
