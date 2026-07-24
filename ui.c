@@ -9,7 +9,6 @@ void ui_draw_joystick(RenderBuffer* rb, Joystick* joy) {
 }
 
 void ui_draw_button(RenderBuffer* rb, Button* btn, const char* text) {
-    // Рисуем кнопку
     uint32_t color = btn->hover ? 0xFF66BB6A : 0xFF4CAF50;
     for (int y = btn->y; y < btn->y + btn->h; y++) {
         uint32_t* line = rb->pixels + y * rb->stride;
@@ -17,8 +16,9 @@ void ui_draw_button(RenderBuffer* rb, Button* btn, const char* text) {
             line[x] = color;
         }
     }
-    // Обводка
+    // Простая обводка (можно заменить на rect)
     graphics_draw_rect(rb, btn->x + btn->w/2, btn->y + btn->h/2, btn->w, 0xFFFFFFFF);
+    // Здесь можно добавить текст, но для простоты пока без
 }
 
 int ui_is_point_in_button(Button* btn, float x, float y) {
