@@ -22,7 +22,6 @@ static void handle_cmd(struct android_app* app, int32_t cmd) {
         e->h = ANativeWindow_getHeight(app->window);
         e->px = e->w/2.0f; e->py = e->h/2.0f;
         e->joy = (Joystick){150, e->h - 150, 80, 0, 0, 0, 0};
-        
         AAsset* a = AAssetManager_open(app->activity->assetManager, "cube.png", AASSET_MODE_BUFFER);
         if (a) {
             int n;
@@ -46,7 +45,7 @@ static int32_t handle_input(struct android_app* app, AInputEvent* ev) {
         float len = sqrtf(dx*dx + dy*dy);
         if (len > 10.0f) {
             e->joy.dirX = dx/len; e->joy.dirY = dy/len;
-            e->angle = atan2f(dy, dx) + M_PI/2.0f; // Вращение по вектору движения
+            e->angle = atan2f(dy, dx) + 1.57f; // Вращение (90 градусов в радианах)
             e->joy.tx = e->joy.dirX * (len > e->joy.r ? e->joy.r : len);
             e->joy.ty = e->joy.dirY * (len > e->joy.r ? e->joy.r : len);
         }
@@ -70,9 +69,8 @@ void android_main(struct android_app* app) {
             if (ANativeWindow_lock(app->window, &wb, NULL) == 0) {
                 RenderBuffer rb = {(uint32_t*)wb.bits, wb.width, wb.height, wb.stride};
                 graphics_clear(&rb, 0xFFCCCCCC);
-                graphics_draw_texture(&rb, e.px, e.py, e.tex, e.tw, e.th, e.angle, 1.5f);
-                graphics_draw_circle(&rb, e.joy.cx, e.joy.cy, e.joy.r, 0xFF000000, 1);
-                graphics_draw_circle(&rb, e.joy.cx + e.joy.tx, e.joy.cy + e.joy.ty, 35, 0xFF444444, 0);
+                graphics_draw_texture(&rb, (int)e.px, (int)e.py, e.tex, e.tw, e.th, e.angle, 1.5f);
+                ui_draw_joystick(&rb, &e.joy);
                 ANativeWindow_unlockAndPost(app->window);
             }
         }
