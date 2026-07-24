@@ -3,57 +3,103 @@
 #include <stdlib.h>
 #include <string.h>
 
-typedef struct { float x, y, z; } Vec3;
+typedef struct { float x, y, z; uint32_t c; } Vertex;
 typedef struct { float x, y; } Vec2;
 
-float a = 0;
+float ang = 0;
 
-void line(ANativeWindow_Buffer* b, int x0, int y0, int x1, int y1, uint32_t c) {
-    int dx = abs(x1-x0), sx = x0<x1 ? 1 : -1;
-    int dy = -abs(y1-y0), sy = y0<y1 ? 1 : -1;
-    int err = dx+dy, e2;
-    while(1) {
-        if(x0>=0 && x0<b->width && y0>=0 && y0<b->height)
-            ((uint32_t*)b->bits)[y0*b->stride + x0] = c;
-        if(x0==x1 && y0==y1) break;
-        e2 = 2*err;
-        if(e2>=dy) { err+=dy; x0+=sx; }
-        if(e2<=dx) { err+=dx; y0+=sy; }
+// Вспомогательная функция для отрисовки горизонтальной линии с градиентом
+void draw_scanline(ANativeWindow_Buffer* b, int y, int x1, int x2, uint32_t color) {
+    if (y < 0 || y >= b->height) return;
+    if (x1 > x2) { int t = x1; x1 = x2; x2 = t; }
+    if (x1 < 0) x1 = 0;
+    if (x2 >= b->width) x2 = b->width - 1;
+    
+    uint32_t* row = (uint32_t*)b->bits + (y * b->stride);
+    for (int x = x1; x <= x2; x++) {
+        row[x] = color;
+    }
+}
+
+// Отрисовка заполненного треугольника (простой алгоритм сканирования)
+void fill_tri(ANativeWindow_Buffer* b, Vec2 v0, Vec2 v1, Vec2 v2, uint32_t color) {
+    // Сортировка вершин по Y
+    if (v0.y > v1.y) { Vec2 t = v0; v0 = v1; v1 = t; }
+    if (v0.y > v2.y) { Vec2 t = v0; v0 = v2; v2 = t; }
+    if (v1.y > v2.y) { Vec2 t = v1; v1 = v2; v2 = t; }
+
+    int total_h = (int)(v2.y - v0.y);
+    if (total_h == 0) return;
+
+    for (int i = 0; i < total_h; i++) {
+        bool second_half = i > v1.y - v0.y || v1.y == v0.y;
+        int segment_h = second_half ? (int)(v2.y - v1.y) : (int)(v1.y - v0.y);
+        if (segment_h == 0) continue;
+
+        float alpha = (float)i / total_h;
+        float beta  = (float)(i - (second_half ? v1.y - v0.y : 0)) / segment_h;
+        
+        int ax = (int)(v0.x + (v2.x - v0.x) * alpha);
+        int bx = second_half ? (int)(v1.x + (v2.x - v1.x) * beta) : (int)(v0.x + (v1.x - v0.x) * beta);
+        
+        // Меняем яркость цвета в зависимости от Y (простой градиент)
+        uint32_t g_color = color | (uint8_t)(alpha * 255); 
+        draw_scanline(b, (int)(v0.y + i), ax, bx, g_color);
     }
 }
 
 void render(struct android_app* app) {
+    if (!app->window) return;
+
     ANativeWindow_Buffer b;
     if (ANativeWindow_lock(app->window, &b, NULL) < 0) return;
+
+    // Очистка экрана (темно-серый)
     uint32_t* p = (uint32_t*)b.bits;
-    for(int i=0; i<b.height*b.stride; i++) p[i] = 0xFF000000;
+    for(int i=0; i < b.height * b.stride; i++) p[i] = 0xFF111111;
 
-    Vec3 v[8] = {{-1,-1,-1},{1,-1,-1},{1,1,-1},{-1,1,-1},{-1,-1,1},{1,-1,1},{1,1,1},{-1,1,1}};
-    int ed[12][2] = {{0,1},{1,2},{2,3},{3,0},{4,5},{5,6},{6,7},{7,4},{0,4},{1,5},{2,6},{3,7}};
-    
-    a += 0.03f;
-    float s = sinf(a), c = cosf(a);
+    // Вершины одного квадрата
+    Vertex v[4] = {
+        {-1, -1, 0, 0xFFFF0000}, // Красный
+        { 1, -1, 0, 0xFF00FF00}, // Зеленый
+        { 1,  1, 0, 0xFF0000FF}, // Синий
+        {-1,  1, 0, 0xFFFFFFFF}  // Белый
+    };
 
-    for(int i=0; i<12; i++) {
-        Vec2 p2d[2];
-        for(int j=0; j<2; j++) {
-            Vec3 t = v[ed[i][j]];
-            float x = t.x*c - t.z*s;
-            float z = t.x*s + t.z*c;
-            float y = t.y*c - z*s;
-            z = t.y*s + z*c;
-            float f = 600.0f / (z + 5.0f);
-            p2d[j].x = x*f + b.width/2.0f;
-            p2d[j].y = y*f + b.height/2.0f;
-        }
-        line(&b, p2d[0].x, p2d[0].y, p2d[1].x, p2d[1].y, 0xFF00FF00);
+    ang += 0.05f;
+    float s = sinf(ang), c = cosf(ang);
+    Vec2 p[4];
+
+    // Трансформация и проекция
+    for(int i=0; i<4; i++) {
+        // Вращение по Y и X
+        float x = v[i].x * c - v[i].z * s;
+        float z = v[i].x * s + v[i].z * c;
+        float y = v[i].y * c - z * s;
+        z = v[i].y * s + z * c;
+
+        float f = 500.0f / (z + 4.0f);
+        p[i].x = x * f + b.width / 2.0f;
+        p[i].y = y * f + b.height / 2.0f;
     }
+
+    // Рисуем два треугольника, составляющих квадрат
+    // Используем разные цвета для градиента (синий и фиолетовый)
+    fill_tri(&b, p[0], p[1], p[2], 0xFF0055FF);
+    fill_tri(&b, p[0], p[2], p[3], 0xFF8800CC);
+
     ANativeWindow_unlockAndPost(app->window);
 }
 
 void handle_cmd(struct android_app* app, int32_t cmd) {
-    if (cmd == APP_CMD_INIT_WINDOW) app->userData = (void*)1;
-    if (cmd == APP_CMD_TERM_WINDOW) app->userData = NULL;
+    switch (cmd) {
+        case APP_CMD_INIT_WINDOW:
+            app->userData = (void*)1;
+            break;
+        case APP_CMD_TERM_WINDOW:
+            app->userData = NULL;
+            break;
+    }
 }
 
 void android_main(struct android_app* app) {
@@ -61,7 +107,7 @@ void android_main(struct android_app* app) {
     while(1) {
         int id, events;
         struct android_poll_source* source;
-        // Заменили ALooper_pollAll на ALooper_pollOnce
+        // Таймаут 0, если окно готово, чтобы рисовать постоянно, иначе -1 (ждем событий)
         while((id = ALooper_pollOnce(app->userData ? 0 : -1, NULL, &events, (void**)&source)) >= 0) {
             if(source) source->process(app, source);
             if(app->destroyRequested) return;
