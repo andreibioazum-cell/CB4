@@ -1,13 +1,28 @@
 #ifndef UI_H
 #define UI_H
+
 #include "graphics.h"
+
+typedef enum {
+    STATE_LOBBY,
+    STATE_PLAYING
+} GameState;
 
 typedef struct {
     int centerX, centerY;
     int radius;
-    float dirX, dirY;       // нормализованное направление (для движения)
-    float touchOffX, touchOffY; // смещение стика от центра (пиксели)
+    float dirX, dirY;
+    float touchOffX, touchOffY;
 } Joystick;
 
+typedef struct {
+    int x, y;
+    int w, h;
+    int hover;
+} Button;
+
 void ui_draw_joystick(RenderBuffer* rb, Joystick* joy);
+void ui_draw_button(RenderBuffer* rb, Button* btn, const char* text);
+int ui_is_point_in_button(Button* btn, float x, float y);
+
 #endif
