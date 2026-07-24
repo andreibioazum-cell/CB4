@@ -57,64 +57,37 @@ void graphics_draw_ring(RenderBuffer* rb, int cx, int cy, int r, int thickness, 
     }
 }
 
-// Рисование текстуры с поворотом и масштабированием (центр в cx, cy)
 void graphics_draw_texture_ex(RenderBuffer* rb, int cx, int cy,
                               uint32_t* tex, int tw, int th,
                               float angle, float scale) {
     if (!tex || tw <= 0 || th <= 0) return;
-
-    // Размер текстуры после масштабирования
     int sw = (int)(tw * scale);
     int sh = (int)(th * scale);
     if (sw <= 0 || sh <= 0) return;
-
-    // Половина размеров
-    float hw = sw / 2.0f;
-    float hh = sh / 2.0f;
-
-    // Предварительные вычисления sin/cos
     float cos_a = cosf(angle);
     float sin_a = sinf(angle);
-
-    // Проход по всем пикселям ограничивающего прямоугольника
-    int left = cx - sw/2;
-    int top  = cy - sh/2;
-    int right = cx + sw/2;
-    int bottom = cy + sh/2;
-
-    // Обрезка по границам экрана
+    int left = cx - sw/2, top = cy - sh/2;
+    int right = cx + sw/2, bottom = cy + sh/2;
     if (left < 0) left = 0;
     if (top < 0) top = 0;
     if (right > rb->width) right = rb->width;
     if (bottom > rb->height) bottom = rb->height;
-
     if (left >= right || top >= bottom) return;
 
-    // Для каждого пикселя выходного буфера вычисляем координаты в исходной текстуре
     for (int y = top; y < bottom; ++y) {
         uint32_t* out = rb->pixels + y * rb->stride;
         for (int x = left; x < right; ++x) {
-            // Вектор от центра игрока к текущему пикселю
             float dx = (float)(x - cx);
             float dy = (float)(y - cy);
-
-            // Поворачиваем вектор обратно (умножаем на матрицу поворота с -angle)
-            float src_x = dx * cos_a + dy * sin_a;   // потому что поворот вперёд, а мы идём назад
+            float src_x = dx * cos_a + dy * sin_a;
             float src_y = -dx * sin_a + dy * cos_a;
-
-            // Переводим в координаты текстуры (0..tw-1, 0..th-1)
-            // Учитываем, что центр текстуры (0,0) соответствует (cx, cy)
             float tx = src_x / scale + tw / 2.0f;
             float ty = src_y / scale + th / 2.0f;
-
-            // Билинейная интерполяция (или просто ближайший сосед для скорости)
             int ix = (int)(tx + 0.5f);
             int iy = (int)(ty + 0.5f);
             if (ix >= 0 && ix < tw && iy >= 0 && iy < th) {
                 uint32_t pix = tex[iy * tw + ix];
-                if ((pix & 0xFF000000) != 0) { // только непрозрачные
-                    out[x] = pix;
-                }
+                if ((pix & 0xFF000000) != 0) out[x] = pix;
             }
         }
     }
