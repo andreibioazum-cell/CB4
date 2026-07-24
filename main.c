@@ -1,117 +1,154 @@
 #include <android_native_app_glue.h>
+#include <android/asset_manager.h>
 #include <math.h>
 #include <stdlib.h>
-#include <string.h>
+#include "graphics.h"
+#include "ui.h"
 
-typedef struct { float x, y, z; uint32_t c; } Vertex;
-typedef struct { float x, y; } Vec2;
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb_image.h"
 
-float ang = 0;
+struct engine {
+    struct android_app* app;
+    Joystick joy;
+    float px, py;
+    int width, height;
+    uint32_t* tex_pixels;
+    int tex_width, tex_height;
+    int tex_ready;
+    // float current_angle; // больше не нужен
+};
 
-// Вспомогательная функция для отрисовки горизонтальной линии с градиентом
-void draw_scanline(ANativeWindow_Buffer* b, int y, int x1, int x2, uint32_t color) {
-    if (y < 0 || y >= b->height) return;
-    if (x1 > x2) { int t = x1; x1 = x2; x2 = t; }
-    if (x1 < 0) x1 = 0;
-    if (x2 >= b->width) x2 = b->width - 1;
-    
-    uint32_t* row = (uint32_t*)b->bits + (y * b->stride);
-    for (int x = x1; x <= x2; x++) {
-        row[x] = color;
+static void handle_cmd(struct android_app* app, int32_t cmd) {
+    struct engine* e = (struct engine*)app->userData;
+    if (cmd == APP_CMD_INIT_WINDOW) {
+        ANativeWindow_setBuffersGeometry(app->window, 0, 0, WINDOW_FORMAT_RGBA_8888);
+        e->width = ANativeWindow_getWidth(app->window);
+        e->height = ANativeWindow_getHeight(app->window);
+        e->px = e->width / 2; 
+        e->py = e->height / 2;
+        // Джойстик ниже и левее
+        e->joy.centerX = 150; 
+        e->joy.centerY = e->height - 150;
+        e->joy.radius = 80;
+
+        // Загрузка текстуры (без изменений)
+        AAssetManager* mgr = app->activity->assetManager;
+        AAsset* asset = AAssetManager_open(mgr, "cube.png", AASSET_MODE_BUFFER);
+        if (asset) {
+            size_t size = AAsset_getLength(asset);
+            unsigned char* data = (unsigned char*)malloc(size);
+            AAsset_read(asset, data, size);
+            AAsset_close(asset);
+            int w, h, n;
+            unsigned char* img = stbi_load_from_memory(data, size, &w, &h, &n, 4);
+            free(data);
+            if (img) {
+                e->tex_width = w;
+                e->tex_height = h;
+                e->tex_pixels = (uint32_t*)malloc(w * h * sizeof(uint32_t));
+                for (int i = 0; i < w * h; ++i) {
+                    uint8_t r = img[i*4], g = img[i*4+1], b = img[i*4+2], a = img[i*4+3];
+                    e->tex_pixels[i] = (a << 24) | (r << 16) | (g << 8) | b;
+                }
+                stbi_image_free(img);
+                e->tex_ready = 1;
+            }
+        }
     }
 }
 
-// Отрисовка заполненного треугольника (простой алгоритм сканирования)
-void fill_tri(ANativeWindow_Buffer* b, Vec2 v0, Vec2 v1, Vec2 v2, uint32_t color) {
-    // Сортировка вершин по Y
-    if (v0.y > v1.y) { Vec2 t = v0; v0 = v1; v1 = t; }
-    if (v0.y > v2.y) { Vec2 t = v0; v0 = v2; v2 = t; }
-    if (v1.y > v2.y) { Vec2 t = v1; v1 = v2; v2 = t; }
-
-    int total_h = (int)(v2.y - v0.y);
-    if (total_h == 0) return;
-
-    for (int i = 0; i < total_h; i++) {
-        bool second_half = i > v1.y - v0.y || v1.y == v0.y;
-        int segment_h = second_half ? (int)(v2.y - v1.y) : (int)(v1.y - v0.y);
-        if (segment_h == 0) continue;
-
-        float alpha = (float)i / total_h;
-        float beta  = (float)(i - (second_half ? v1.y - v0.y : 0)) / segment_h;
-        
-        int ax = (int)(v0.x + (v2.x - v0.x) * alpha);
-        int bx = second_half ? (int)(v1.x + (v2.x - v1.x) * beta) : (int)(v0.x + (v1.x - v0.x) * beta);
-        
-        // Меняем яркость цвета в зависимости от Y (простой градиент)
-        uint32_t g_color = color | (uint8_t)(alpha * 255); 
-        draw_scanline(b, (int)(v0.y + i), ax, bx, g_color);
+static int32_t handle_input(struct android_app* app, AInputEvent* event) {
+    struct engine* e = (struct engine*)app->userData;
+    if (AInputEvent_getType(event) == AINPUT_EVENT_TYPE_MOTION) {
+        int action = AMotionEvent_getAction(event);
+        if (action == AMOTION_EVENT_ACTION_UP || action == AMOTION_EVENT_ACTION_CANCEL) {
+            e->joy.dirX = e->joy.dirY = 0.0f;
+            e->joy.touchOffX = e->joy.touchOffY = 0.0f;
+            return 1;
+        }
+        float x = AMotionEvent_getX(event, 0);
+        float y = AMotionEvent_getY(event, 0);
+        float dx = x - e->joy.centerX;
+        float dy = y - e->joy.centerY;
+        float len = sqrtf(dx*dx + dy*dy);
+        if (len > 10.0f) {
+            e->joy.dirX = dx / len;
+            e->joy.dirY = dy / len;
+            if (len > e->joy.radius) {
+                e->joy.touchOffX = e->joy.dirX * e->joy.radius;
+                e->joy.touchOffY = e->joy.dirY * e->joy.radius;
+            } else {
+                e->joy.touchOffX = dx;
+                e->joy.touchOffY = dy;
+            }
+        } else {
+            e->joy.dirX = e->joy.dirY = 0.0f;
+            e->joy.touchOffX = e->joy.touchOffY = 0.0f;
+        }
+        return 1;
     }
-}
-
-void render(struct android_app* app) {
-    if (!app->window) return;
-
-    ANativeWindow_Buffer b;
-    if (ANativeWindow_lock(app->window, &b, NULL) < 0) return;
-
-    // Очистка экрана (темно-серый)
-    uint32_t* p = (uint32_t*)b.bits;
-    for(int i=0; i < b.height * b.stride; i++) p[i] = 0xFF111111;
-
-    // Вершины одного квадрата
-    Vertex v[4] = {
-        {-1, -1, 0, 0xFFFF0000}, // Красный
-        { 1, -1, 0, 0xFF00FF00}, // Зеленый
-        { 1,  1, 0, 0xFF0000FF}, // Синий
-        {-1,  1, 0, 0xFFFFFFFF}  // Белый
-    };
-
-    ang += 0.05f;
-    float s = sinf(ang), c = cosf(ang);
-    Vec2 p[4];
-
-    // Трансформация и проекция
-    for(int i=0; i<4; i++) {
-        // Вращение по Y и X
-        float x = v[i].x * c - v[i].z * s;
-        float z = v[i].x * s + v[i].z * c;
-        float y = v[i].y * c - z * s;
-        z = v[i].y * s + z * c;
-
-        float f = 500.0f / (z + 4.0f);
-        p[i].x = x * f + b.width / 2.0f;
-        p[i].y = y * f + b.height / 2.0f;
-    }
-
-    // Рисуем два треугольника, составляющих квадрат
-    // Используем разные цвета для градиента (синий и фиолетовый)
-    fill_tri(&b, p[0], p[1], p[2], 0xFF0055FF);
-    fill_tri(&b, p[0], p[2], p[3], 0xFF8800CC);
-
-    ANativeWindow_unlockAndPost(app->window);
-}
-
-void handle_cmd(struct android_app* app, int32_t cmd) {
-    switch (cmd) {
-        case APP_CMD_INIT_WINDOW:
-            app->userData = (void*)1;
-            break;
-        case APP_CMD_TERM_WINDOW:
-            app->userData = NULL;
-            break;
-    }
+    return 0;
 }
 
 void android_main(struct android_app* app) {
+    struct engine e = {0};
+    app->userData = &e;
     app->onAppCmd = handle_cmd;
-    while(1) {
-        int id, events;
+    app->onInputEvent = handle_input;
+
+    while (1) {
+        int ident;
         struct android_poll_source* source;
-        // Таймаут 0, если окно готово, чтобы рисовать постоянно, иначе -1 (ждем событий)
-        while((id = ALooper_pollOnce(app->userData ? 0 : -1, NULL, &events, (void**)&source)) >= 0) {
-            if(source) source->process(app, source);
-            if(app->destroyRequested) return;
+        while ((ident = ALooper_pollOnce(0, NULL, NULL, (void**)&source)) >= 0) {
+            if (source) source->process(app, source);
+            if (app->destroyRequested) {
+                if (e.tex_pixels) free(e.tex_pixels);
+                return;
+            }
         }
-        if(app->userData) render(app);
+
+        if (app->window) {
+            e.px += e.joy.dirX * 10.0f;
+            e.py += e.joy.dirY * 10.0f;
+
+            // Масштаб 1.5 (как просили)
+            float scale = 1.5f;
+            // Ограничиваем позицию так же, как в первой версии (по половинному размеру)
+            if (e.tex_ready) {
+                float halfW = (e.tex_width * scale) / 2.0f;
+                float halfH = (e.tex_height * scale) / 2.0f;
+                if (e.px < halfW) e.px = halfW;
+                if (e.px > e.width - halfW) e.px = e.width - halfW;
+                if (e.py < halfH) e.py = halfH;
+                if (e.py > e.height - halfH) e.py = e.height - halfH;
+            } else {
+                // fallback квадрат 80x80
+                float half = 40.0f;
+                if (e.px < half) e.px = half;
+                if (e.px > e.width - half) e.px = e.width - half;
+                if (e.py < half) e.py = half;
+                if (e.py > e.height - half) e.py = e.height - half;
+            }
+
+            // Поворот убран – игрок всегда смотрит вверх (текстура как есть)
+            // Если нужно поворачивать, можно вернуть, но тогда надо пересчитать границы по диагонали
+
+            ANativeWindow_Buffer winBuf;
+            if (ANativeWindow_lock(app->window, &winBuf, NULL) == 0) {
+                RenderBuffer rb = { (uint32_t*)winBuf.bits, winBuf.width, winBuf.height, winBuf.stride };
+                graphics_clear(&rb, 0xFFCCCCCC);
+                if (e.tex_ready) {
+                    // Рисуем текстуру без поворота (угол = 0)
+                    graphics_draw_texture_ex(&rb, (int)e.px, (int)e.py,
+                                             e.tex_pixels, e.tex_width, e.tex_height,
+                                             0.0f, scale);
+                } else {
+                    graphics_draw_rect(&rb, (int)e.px, (int)e.py, 80, 0xFFEE7722);
+                }
+                ui_draw_joystick(&rb, &e.joy);
+                ANativeWindow_unlockAndPost(app->window);
+            }
+        }
     }
 }
