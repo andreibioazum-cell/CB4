@@ -35,7 +35,6 @@ void render(struct android_app* app) {
     float s = sinf(a), c = cosf(a);
 
     for(int i=0; i<12; i++) {
-        Vec3 r[2];
         Vec2 p2d[2];
         for(int j=0; j<2; j++) {
             Vec3 t = v[ed[i][j]];
@@ -62,7 +61,8 @@ void android_main(struct android_app* app) {
     while(1) {
         int id, events;
         struct android_poll_source* source;
-        while((id = ALooper_pollAll(app->userData ? 0 : -1, NULL, &events, (void**)&source)) >= 0) {
+        // Заменили ALooper_pollAll на ALooper_pollOnce
+        while((id = ALooper_pollOnce(app->userData ? 0 : -1, NULL, &events, (void**)&source)) >= 0) {
             if(source) source->process(app, source);
             if(app->destroyRequested) return;
         }
