@@ -4,7 +4,6 @@
 #include <string.h>
 #include "game.h"
 #include "graphics.h"
-#include "ui.h"
 
 struct engine {
     struct android_app* app;
