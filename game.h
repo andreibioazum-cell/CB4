@@ -1,27 +1,33 @@
 #ifndef GAME_H
 #define GAME_H
 
+#include <android/asset_manager.h>
+#include "graphics.h"
 #include "ui.h"
+#include "font.h"
 
 typedef struct {
     float x, y;
     float angle;
+    float scale;
     uint32_t* texture;
     int tex_width, tex_height;
-    int ready;
+    int tex_ready;
 } Player;
 
 typedef struct {
-    GameState state;
     Player player;
     Joystick joy;
-    Button playBtn;
+    Font* font;
     int screen_w, screen_h;
+    int fontSize;                 // текущий размер шрифта в пикселях
+    int frameCount;
+    float fps;
+    struct timeval lastTime;
 } Game;
 
-void game_init(Game* g, int w, int h);
-void game_load_texture(Game* g, void* asset_manager);
-void game_update(Game* g);
+int game_init(Game* g, int w, int h, AAssetManager* mgr);
+void game_update(Game* g, int w, int h);
 void game_draw(Game* g, RenderBuffer* rb);
 void game_free(Game* g);
 void game_handle_touch(Game* g, float x, float y, int action);
