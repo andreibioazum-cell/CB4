@@ -8,7 +8,8 @@
 
 typedef struct {
     float x, y;
-    float angle;
+    float angle;          // текущий угол
+    float last_angle;     // запоминаем последнее направление
     float scale;
     uint32_t* texture;
     int tex_width, tex_height;
@@ -20,7 +21,7 @@ typedef struct {
     Joystick joy;
     Font* font;
     int screen_w, screen_h;
-    int fontSize;                 // текущий размер шрифта в пикселях
+    int fontSize;
     int frameCount;
     float fps;
     struct timeval lastTime;
