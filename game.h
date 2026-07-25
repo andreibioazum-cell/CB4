@@ -8,8 +8,8 @@
 
 typedef struct {
     float x, y;
-    float angle;          // текущий угол
-    float last_angle;     // запоминаем последнее направление
+    float angle;
+    float last_angle;
     float scale;
     uint32_t* texture;
     int tex_width, tex_height;
