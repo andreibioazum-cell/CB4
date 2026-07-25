@@ -11,8 +11,8 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 
-// Если текстура смотрит вверх – оставь 0. Если вправо – поставь -M_PI_2.
-#define TEXTURE_OFFSET 0.0f
+// Если игрок смотрит в противоположную сторону, добавь M_PI
+#define TEXTURE_OFFSET M_PI
 
 static uint32_t* load_texture(AAssetManager* mgr, const char* filename, int* w, int* h) {
     AAsset* asset = AAssetManager_open(mgr, filename, AASSET_MODE_BUFFER);
@@ -51,6 +51,7 @@ int game_init(Game* g, int w, int h, AAssetManager* mgr) {
 
     g->player.texture = load_texture(mgr, "cube.png", &g->player.tex_width, &g->player.tex_height);
     g->player.tex_ready = (g->player.texture != NULL);
+    __android_log_print(ANDROID_LOG_INFO, "GAME", "Texture loaded: %d", g->player.tex_ready);
 
     g->fontSize = h / 30;
     if (g->fontSize < 12) g->fontSize = 12;
@@ -63,11 +64,15 @@ int game_init(Game* g, int w, int h, AAssetManager* mgr) {
         AAsset_read(font_asset, font_data, size);
         AAsset_close(font_asset);
         if (!font_init(&g->font, font_data, size, (float)g->fontSize)) {
-            __android_log_print(ANDROID_LOG_WARN, "GAME", "Font init failed");
+            __android_log_print(ANDROID_LOG_WARN, "GAME", "Font init failed, using fallback");
+            g->font = NULL;
+        } else {
+            __android_log_print(ANDROID_LOG_INFO, "GAME", "Font loaded successfully");
         }
         free(font_data);
     } else {
-        __android_log_print(ANDROID_LOG_WARN, "GAME", "Font file not found in assets");
+        __android_log_print(ANDROID_LOG_WARN, "GAME", "Font file not found in assets, using fallback");
+        g->font = NULL;
     }
 
     gettimeofday(&g->lastTime, NULL);
@@ -161,10 +166,8 @@ static void draw_tiny_text(RenderBuffer* rb, int x, int y, const char* str, uint
         if ((*p >= '0' && *p <= '9') || *p == '.') {
             draw_tiny_char(rb, cx, y, *p, color);
             cx += 6;
-        } else if (*p == ' ') {
-            cx += 6;
         } else {
-            cx += 6;
+            cx += 6; // пропускаем буквы, но сдвигаем
         }
     }
 }
@@ -184,7 +187,7 @@ void game_draw(Game* g, RenderBuffer* rb) {
 
     char fpsText[32];
     snprintf(fpsText, sizeof(fpsText), "FPS: %.1f", g->fps);
-    int posX = rb->width - 150;
+    int posX = rb->width - 120;
     int posY = 20;
 
     if (g->font) {
@@ -210,7 +213,6 @@ void game_handle_touch(Game* g, float x, float y, int action) {
     float dy = y - g->joy.centerY;
     float dist = sqrtf(dx*dx + dy*dy);
 
-    // Игнорируем касания вне зоны джойстика (кроме отпускания)
     if (dist > g->joy.radius + 30 && action != AMOTION_EVENT_ACTION_UP && action != AMOTION_EVENT_ACTION_CANCEL) {
         return;
     }
