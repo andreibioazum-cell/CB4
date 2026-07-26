@@ -6,6 +6,7 @@
 #include <string.h>
 #include <sys/time.h>
 #include <android/asset_manager.h>
+#include <android/input.h>      // ← добавить для AMOTION_EVENT_*
 #include <android/log.h>
 
 #define STB_IMAGE_IMPLEMENTATION
@@ -167,7 +168,7 @@ static void draw_tiny_text(RenderBuffer* rb, int x, int y, const char* str, uint
             draw_tiny_char(rb, cx, y, *p, color);
             cx += 6;
         } else {
-            cx += 6; // пропускаем буквы, но сдвигаем
+            cx += 6;
         }
     }
 }
