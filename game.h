@@ -2,6 +2,7 @@
 #define GAME_H
 
 #include <android/asset_manager.h>
+#include <sys/time.h>          // ← добавить для struct timeval
 #include "graphics.h"
 #include "ui.h"
 #include "font.h"
