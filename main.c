@@ -4,6 +4,7 @@
 #include <string.h>
 #include "game.h"
 #include "graphics.h"
+#include "ui.h"
 
 struct engine {
     struct android_app* app;
@@ -32,7 +33,7 @@ static int32_t handle_input(struct android_app* app, AInputEvent* event) {
         int action = AMotionEvent_getAction(event);
         float x = AMotionEvent_getX(event, 0);
         float y = AMotionEvent_getY(event, 0);
-        game_handle_touch(&e->game, x, y, action);
+        ui_handle_joystick_touch(&e->game.joy, x, y, action);
         return 1;
     }
     return 0;
