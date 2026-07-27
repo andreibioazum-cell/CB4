@@ -2,7 +2,7 @@
 #define GAME_H
 
 #include <android/asset_manager.h>
-#include <sys/time.h>          // ← добавить для struct timeval
+#include <sys/time.h>
 #include "graphics.h"
 #include "ui.h"
 #include "font.h"
@@ -32,6 +32,5 @@ int game_init(Game* g, int w, int h, AAssetManager* mgr);
 void game_update(Game* g, int w, int h);
 void game_draw(Game* g, RenderBuffer* rb);
 void game_free(Game* g);
-void game_handle_touch(Game* g, float x, float y, int action);
 
 #endif
