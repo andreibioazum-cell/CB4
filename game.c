@@ -6,7 +6,6 @@
 #include <string.h>
 #include <sys/time.h>
 #include <android/asset_manager.h>
-#include <android/input.h>
 #include <android/log.h>
 
 #define STB_IMAGE_IMPLEMENTATION
@@ -113,36 +112,4 @@ void game_draw(Game* g, RenderBuffer* rb) {
 void game_free(Game* g) {
     if (g->player.texture) { free(g->player.texture); g->player.texture = NULL; }
     if (g->font) { font_free(g->font); g->font = NULL; }
-}
-
-void game_handle_touch(Game* g, float x, float y, int action) {
-    float dx = x - g->joy.centerX, dy = y - g->joy.centerY;
-    float dist = sqrtf(dx*dx + dy*dy);
-    
-    if (action == AMOTION_EVENT_ACTION_UP || action == AMOTION_EVENT_ACTION_CANCEL) {
-        g->joy.dirX = g->joy.dirY = 0.0f;
-        g->joy.touchOffX = g->joy.touchOffY = 0.0f;
-        return;
-    }
-    
-    // Проверяем, что палец в зоне джойстика
-    if (dist > g->joy.radius + 30)
-        return;
-    
-    // Если палец внутри радиуса, обновляем позицию стика
-    const float dead = 20.0f;
-    if (dist > dead) {
-        // Ограничиваем расстояние радиусом
-        float clampedDist = (dist > g->joy.radius) ? g->joy.radius : dist;
-        float ratio = clampedDist / dist;
-        g->joy.touchOffX = dx * ratio;
-        g->joy.touchOffY = dy * ratio;
-        
-        // Вычисляем направление
-        g->joy.dirX = dx / dist;
-        g->joy.dirY = dy / dist;
-    } else {
-        g->joy.dirX = g->joy.dirY = 0.0f;
-        g->joy.touchOffX = g->joy.touchOffY = 0.0f;
-    }
 }
