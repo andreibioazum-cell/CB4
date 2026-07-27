@@ -12,7 +12,6 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 
-// Попробуй 0, если инвертировано – замени на M_PI или -M_PI
 #define TEXTURE_OFFSET 0.0f
 
 static uint32_t* load_texture(AAssetManager* mgr, const char* fn, int* w, int* h) {
@@ -119,25 +118,29 @@ void game_free(Game* g) {
 void game_handle_touch(Game* g, float x, float y, int action) {
     float dx = x - g->joy.centerX, dy = y - g->joy.centerY;
     float dist = sqrtf(dx*dx + dy*dy);
-    if (dist > g->joy.radius + 30 && action != AMOTION_EVENT_ACTION_UP && action != AMOTION_EVENT_ACTION_CANCEL)
-        return;
+    
     if (action == AMOTION_EVENT_ACTION_UP || action == AMOTION_EVENT_ACTION_CANCEL) {
         g->joy.dirX = g->joy.dirY = 0.0f;
         g->joy.touchOffX = g->joy.touchOffY = 0.0f;
         return;
     }
-    float len = sqrtf(dx*dx + dy*dy);
+    
+    // Проверяем, что палец в зоне джойстика
+    if (dist > g->joy.radius + 30)
+        return;
+    
+    // Если палец внутри радиуса, обновляем позицию стика
     const float dead = 20.0f;
-    if (len > dead) {
-        float inv = 1.0f/len;
-        g->joy.dirX = dx*inv; g->joy.dirY = dy*inv;
-        if (len > g->joy.radius) {
-            g->joy.touchOffX = g->joy.dirX * g->joy.radius;
-            g->joy.touchOffY = g->joy.dirY * g->joy.radius;
-        } else {
-            g->joy.touchOffX = dx;
-            g->joy.touchOffY = dy;
-        }
+    if (dist > dead) {
+        // Ограничиваем расстояние радиусом
+        float clampedDist = (dist > g->joy.radius) ? g->joy.radius : dist;
+        float ratio = clampedDist / dist;
+        g->joy.touchOffX = dx * ratio;
+        g->joy.touchOffY = dy * ratio;
+        
+        // Вычисляем направление
+        g->joy.dirX = dx / dist;
+        g->joy.dirY = dy / dist;
     } else {
         g->joy.dirX = g->joy.dirY = 0.0f;
         g->joy.touchOffX = g->joy.touchOffY = 0.0f;
