@@ -83,8 +83,7 @@ void game_draw(Game* g, RenderBuffer* rb) {
         graphics_draw_rect(rb, (int)g->player.x, (int)g->player.y, 80, 0xFFEE7722);
     ui_draw_joystick(rb, &g->joy);
     char fps[32];
-    int fps_int = (int)(g->fps + 0.5f);   // округление
-    snprintf(fps, sizeof(fps), "FPS: %d", fps_int);
+    snprintf(fps, sizeof(fps), "FPS: %.1f", g->fps);
     font_draw_text(g->font, rb, rb->width-120, 20, fps, 0xFFFFFFFF);
 }
 
