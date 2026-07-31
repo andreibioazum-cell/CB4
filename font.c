@@ -20,7 +20,7 @@ int font_init(Font** f, const unsigned char* data, int sz, float height) {
 
 void font_set_size(Font* f, float height) { if (f) f->scale = stbtt_ScaleForPixelHeight(&f->info, height); }
 
-void font_draw_text(Font* f, RenderBuffer* rb, int x, int y, const char* txt, uint32_t col) {
+void font_draw_text(Font* f, RenderBuffer* rb, int x, int y, const char* txt, uint32_t color) {
     if (!f || !rb || !txt) return;
     int cx = x;
     for (const char* p = txt; *p; ++p) {
@@ -41,7 +41,7 @@ void font_draw_text(Font* f, RenderBuffer* rb, int x, int y, const char* txt, ui
                         unsigned char a = bm[row*w + col];
                         if (a) {
                             int sx = cx + x0 + col;
-                            if (sx>=0 && sx<rb->width) line[sx] = col;
+                            if (sx>=0 && sx<rb->width) line[sx] = color;  // исправлено: color вместо col
                         }
                     }
                 }
