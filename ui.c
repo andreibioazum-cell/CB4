@@ -16,7 +16,10 @@ void ui_handle_joystick(Joystick* joy, float x, float y, int action) {
     }
     float dx = x - joy->centerX, dy = y - joy->centerY;
     float dist = hypotf(dx, dy);
-    if (dist > joy->radius + 30.0f) return;
+    if (dist > joy->radius + 30.0f) {
+        joy->dirX = joy->dirY = joy->touchOffX = joy->touchOffY = 0.0f;  // сброс при слишком далёком касании
+        return;
+    }
     if (dist < 15.0f) {
         joy->dirX = joy->dirY = joy->touchOffX = joy->touchOffY = 0.0f;
         return;
