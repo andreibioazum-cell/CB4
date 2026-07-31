@@ -6,7 +6,8 @@
 #include <string.h>
 #include <sys/time.h>
 #include <android/asset_manager.h>
-#define STB_IMAGE_IMPLEMENTATION
+
+#define STB_IMAGE_IMPLEMENTATION  // ТОЛЬКО ЗДЕСЬ
 #include "stb_image.h"
 
 #define OFF 0.0f
@@ -83,8 +84,9 @@ void game_draw(Game* g, RenderBuffer* rb) {
         graphics_draw_rect(rb, (int)g->player.x, (int)g->player.y, 80, 0xFFEE7722);
     ui_draw_joystick(rb, &g->joy);
     char fps[32];
-    snprintf(fps, sizeof(fps), "FPS: %.1f", g->fps);
-    font_draw_text(g->font, rb, rb->width-120, 20, fps, 0xFFFFFFFF);
+    int fps_int = (int)(g->fps + 0.5f);
+    snprintf(fps, sizeof(fps), "FPS: %d", fps_int);
+    font_draw_text(g->font, rb, rb->width-120, 40, fps, 0xFF000000);
 }
 
 void game_free(Game* g) {
