@@ -15,17 +15,16 @@ void ui_handle_joystick(Joystick* joy, float x, float y, int action) {
         return;
     }
     float dx = x - joy->centerX, dy = y - joy->centerY;
-    float dist = hypotf(dx, dy);
-    if (dist > joy->radius + 30.0f) {
-        joy->dirX = joy->dirY = joy->touchOffX = joy->touchOffY = 0.0f;  // сброс при слишком далёком касании
-        return;
-    }
-    if (dist < 15.0f) {
+    float dist = sqrtf(dx*dx + dy*dy);
+    if (dist > joy->radius + 30.0f) return; // игнорируем, НЕ сбрасываем
+
+    if (dist < 0.001f) {
         joy->dirX = joy->dirY = joy->touchOffX = joy->touchOffY = 0.0f;
         return;
     }
     float clamped = (dist > joy->radius) ? joy->radius : dist;
-    joy->dirX = dx / dist; joy->dirY = dy / dist;
+    joy->dirX = dx / dist;
+    joy->dirY = dy / dist;
     joy->touchOffX = joy->dirX * clamped;
     joy->touchOffY = joy->dirY * clamped;
 }
