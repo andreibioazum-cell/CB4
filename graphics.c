@@ -1,94 +1,98 @@
-#include "game.h"
 #include "graphics.h"
-#include "ui.h"
-#include <math.h>
-#include <stdlib.h>
+#include <arm_neon.h>
 #include <string.h>
-#include <sys/time.h>
-#include <android/asset_manager.h>
-#define STB_IMAGE_IMPLEMENTATION
-#include "stb_image.h"
+#include <math.h>
 
-#define OFF 0.0f
+// stb_image.h НЕ должен иметь реализацию в этом файле
+// просто подключаем заголовок, если нужны типы
+// #include "stb_image.h"  // закомментировано, т.к. не используется
 
-static uint32_t* load_tex(AAssetManager* m, const char* f, int* w, int* h) {
-    AAsset* a = AAssetManager_open(m, f, AASSET_MODE_BUFFER);
-    if (!a) return 0;
-    size_t sz = AAsset_getLength(a);
-    unsigned char* d = (unsigned char*)malloc(sz);
-    AAsset_read(a, d, sz); AAsset_close(a);
-    int n; unsigned char* img = stbi_load_from_memory(d, sz, w, h, &n, 4);
-    free(d);
-    if (!img) return 0;
-    uint32_t* p = (uint32_t*)malloc((*w)*(*h)*4);
-    for (int i=0; i<(*w)*(*h); ++i) {
-        uint8_t r=img[i*4], g=img[i*4+1], b=img[i*4+2], a=img[i*4+3];
-        p[i] = (a<<24)|(r<<16)|(g<<8)|b;
+void graphics_clear(RenderBuffer* rb, uint32_t color) {
+    uint32x4_t v_color = vdupq_n_u32(color);
+    int total_pixels = rb->stride * rb->height;
+    int i = 0;
+    for (; i <= total_pixels - 4; i += 4) {
+        vst1q_u32(&rb->pixels[i], v_color);
     }
-    stbi_image_free(img);
-    return p;
+    for (; i < total_pixels; i++) rb->pixels[i] = color;
 }
 
-int game_init(Game* g, int w, int h, AAssetManager* m) {
-    memset(g, 0, sizeof(Game));
-    g->screen_w=w; g->screen_h=h;
-    g->player.x=w/2.0f; g->player.y=h/2.0f; g->player.scale=1.5f;
-    g->joy.centerX=150; g->joy.centerY=h-150; g->joy.radius=80;
-    g->player.texture = load_tex(m, "cube.png", &g->player.tex_width, &g->player.tex_height);
-    g->player.tex_ready = (g->player.texture != 0);
-    g->fontSize = h/30; if(g->fontSize<12) g->fontSize=12; if(g->fontSize>48) g->fontSize=48;
-    AAsset* fa = AAssetManager_open(m, "Roboto-Regular.ttf", AASSET_MODE_BUFFER);
-    if (fa) {
-        size_t sz = AAsset_getLength(fa);
-        unsigned char* fd = (unsigned char*)malloc(sz);
-        AAsset_read(fa, fd, sz); AAsset_close(fa);
-        font_init(&g->font, fd, sz, (float)g->fontSize);
-        free(fd);
+void graphics_draw_rect(RenderBuffer* rb, int x, int y, int size, uint32_t color) {
+    int x1 = x - size/2, x2 = x + size/2;
+    int y1 = y - size/2, y2 = y + size/2;
+    if (x1 < 0) x1 = 0; if (x2 > rb->width) x2 = rb->width;
+    if (y1 < 0) y1 = 0; if (y2 > rb->height) y2 = rb->height;
+
+    for (int i = y1; i < y2; i++) {
+        uint32_t* line = rb->pixels + (i * rb->stride);
+        for (int j = x1; j < x2; j++) line[j] = color;
     }
-    gettimeofday(&g->lastTime, 0);
-    return 1;
 }
 
-void game_update(Game* g, int w, int h) {
-    g->screen_w=w; g->screen_h=h; g->joy.centerY=h-150;
-    int ns = h/30; if(ns<12) ns=12; if(ns>48) ns=48;
-    if (ns != g->fontSize && g->font) { g->fontSize=ns; font_set_size(g->font, (float)ns); }
-    g->player.x += g->joy.dirX * 10.0f;
-    g->player.y += g->joy.dirY * 10.0f;
-    float sc = g->player.scale;
-    float maxE = g->player.tex_ready ? hypotf(g->player.tex_width*sc*0.5f, g->player.tex_height*sc*0.5f) : 40.0f;
-    if (g->player.x < maxE) g->player.x = maxE;
-    if (g->player.x > w - maxE) g->player.x = w - maxE;
-    if (g->player.y < maxE) g->player.y = maxE;
-    if (g->player.y > h - maxE) g->player.y = h - maxE;
-    float len = hypotf(g->joy.dirX, g->joy.dirY);
-    if (len > 0.001f) {
-        g->player.angle = atan2f(g->joy.dirX, -g->joy.dirY) + OFF;
-        g->player.last_angle = g->player.angle;
-    } else g->player.angle = g->player.last_angle;
-    g->frameCount++;
-    struct timeval now;
-    gettimeofday(&now, 0);
-    float dt = (now.tv_sec - g->lastTime.tv_sec) + (now.tv_usec - g->lastTime.tv_usec)/1000000.0f;
-    if (dt >= 1.0f) { g->fps = g->frameCount/dt; g->frameCount=0; g->lastTime=now; }
+void graphics_draw_circle(RenderBuffer* rb, int cx, int cy, int r, uint32_t color) {
+    int r2 = r * r;
+    for (int y = -r; y <= r; y++) {
+        int screen_y = cy + y;
+        if (screen_y < 0 || screen_y >= rb->height) continue;
+        uint32_t* line = rb->pixels + (screen_y * rb->stride);
+        int y2 = y * y;
+        for (int x = -r; x <= r; x++) {
+            int screen_x = cx + x;
+            if (screen_x < 0 || screen_x >= rb->width) continue;
+            if (x * x + y2 <= r2) line[screen_x] = color;
+        }
+    }
 }
 
-void game_draw(Game* g, RenderBuffer* rb) {
-    graphics_clear(rb, 0xFFCCCCCC);
-    if (g->player.tex_ready)
-        graphics_draw_texture_ex(rb, (int)g->player.x, (int)g->player.y,
-                                 g->player.texture, g->player.tex_width, g->player.tex_height,
-                                 g->player.angle, g->player.scale);
-    else
-        graphics_draw_rect(rb, (int)g->player.x, (int)g->player.y, 80, 0xFFEE7722);
-    ui_draw_joystick(rb, &g->joy);
-    char fps[32];
-    int fps_int = (int)(g->fps + 0.5f);
-    snprintf(fps, sizeof(fps), "FPS: %d", fps_int);
-    font_draw_text(g->font, rb, rb->width-120, 40, fps, 0xFF000000);
+void graphics_draw_ring(RenderBuffer* rb, int cx, int cy, int r, int thickness, uint32_t color) {
+    int r_out2 = r * r;
+    int r_in2 = (r - thickness) * (r - thickness);
+    for (int y = -r; y <= r; y++) {
+        int screen_y = cy + y;
+        if (screen_y < 0 || screen_y >= rb->height) continue;
+        uint32_t* line = rb->pixels + (screen_y * rb->stride);
+        int y2 = y * y;
+        for (int x = -r; x <= r; x++) {
+            int screen_x = cx + x;
+            if (screen_x < 0 || screen_x >= rb->width) continue;
+            int dist2 = x * x + y2;
+            if (dist2 <= r_out2 && dist2 >= r_in2) line[screen_x] = color;
+        }
+    }
 }
 
-void game_free(Game* g) {
-    if (g->player.texture) { free(g->player.texture); g->player.texture = 0; }
-    if (g->font) { font_free(g->font); g->font = 0; }
+void graphics_draw_texture_ex(RenderBuffer* rb, int cx, int cy,
+                              uint32_t* tex, int tw, int th,
+                              float angle, float scale) {
+    if (!tex || tw <= 0 || th <= 0) return;
+    int sw = (int)(tw * scale);
+    int sh = (int)(th * scale);
+    if (sw <= 0 || sh <= 0) return;
+    float cos_a = cosf(angle);
+    float sin_a = sinf(angle);
+    int left = cx - sw/2, top = cy - sh/2;
+    int right = cx + sw/2, bottom = cy + sh/2;
+    if (left < 0) left = 0;
+    if (top < 0) top = 0;
+    if (right > rb->width) right = rb->width;
+    if (bottom > rb->height) bottom = rb->height;
+    if (left >= right || top >= bottom) return;
+
+    for (int y = top; y < bottom; ++y) {
+        uint32_t* out = rb->pixels + y * rb->stride;
+        for (int x = left; x < right; ++x) {
+            float dx = (float)(x - cx);
+            float dy = (float)(y - cy);
+            float src_x = dx * cos_a + dy * sin_a;
+            float src_y = -dx * sin_a + dy * cos_a;
+            float tx = src_x / scale + tw / 2.0f;
+            float ty = src_y / scale + th / 2.0f;
+            int ix = (int)(tx + 0.5f);
+            int iy = (int)(ty + 0.5f);
+            if (ix >= 0 && ix < tw && iy >= 0 && iy < th) {
+                uint32_t pix = tex[iy * tw + ix];
+                if ((pix & 0xFF000000) != 0) out[x] = pix;
+            }
+        }
+    }
 }
