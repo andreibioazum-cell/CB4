@@ -1,9 +1,9 @@
 #include <android_native_app_glue.h>
-#include <math.h>  // Добавлено для cosf/sinf
+#include <math.h>
 #include "game.h"
 #include "ui.h"
 
-#define BULLET_SPEED 15.0f  // Объявлена константа
+#define BULLET_SPEED 15.0f
 
 struct engine { struct android_app* app; Game game; };
 
@@ -24,8 +24,11 @@ static int32_t handle_input(struct android_app* app, AInputEvent* event) {
         int action = AMotionEvent_getAction(event);
         float x = AMotionEvent_getX(event, 0);
         float y = AMotionEvent_getY(event, 0);
-        handle_joystick(&e->game.joy, x, y, action);
-        if (handle_button(&e->game.attackBtn, x, y, action)) {
+        
+        // Правильные имена функций (с префиксом ui_)
+        ui_handle_joystick(&e->game.joy, x, y, action);
+        
+        if (ui_handle_button(&e->game.attackBtn, x, y, action)) {
             if (!e->game.bullet.active) {
                 float angle = e->game.player.angle;
                 float cos_a = cosf(angle);
