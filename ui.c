@@ -4,10 +4,10 @@
 #include "font.h"
 
 void draw_joystick(RenderBuffer* b, Joystick* j) {
-    draw_ring(b, j->centerX, j->centerY, j->radius, 4, 0xFF000000);
+    graphics_draw_ring(b, j->centerX, j->centerY, j->radius, 4, 0xFF000000);
     int sx = j->centerX + (int)j->touchOffX;
     int sy = j->centerY + (int)j->touchOffY;
-    draw_circle(b, sx, sy, 35, 0xFF000000);
+    graphics_draw_circle(b, sx, sy, 35, 0xFF000000);
 }
 
 void handle_joystick(Joystick* j, float x, float y, int action) {
@@ -30,8 +30,8 @@ void handle_joystick(Joystick* j, float x, float y, int action) {
 }
 
 void draw_button(RenderBuffer* b, Button* btn, const char* text) {
-    draw_circle(b, btn->x, btn->y, btn->radius, 0xFFFF0000);
-    draw_ring(b, btn->x, btn->y, btn->radius, 3, 0xFF000000);
+    graphics_draw_circle(b, btn->x, btn->y, btn->radius, 0xFFFF0000);
+    graphics_draw_ring(b, btn->x, btn->y, btn->radius, 3, 0xFF000000);
     draw_text_outlined(b, btn->x - 30, btn->y - 12, text, 0xFFFFFFFF, 0xFF000000);
 }
 
