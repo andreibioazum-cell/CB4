@@ -1,89 +1,75 @@
 #include "graphics.h"
-#include <string.h>
 #include <math.h>
+#include <string.h>
 
-void graphics_clear(RenderBuffer* rb, uint32_t color) {
-    int total = rb->stride * rb->height;
-    for (int i = 0; i < total; i++) {
-        rb->pixels[i] = color;
-    }
+void clear(RenderBuffer* b, uint32_t c) {
+    int t = b->stride * b->height;
+    for (int i = 0; i < t; i++) b->pixels[i] = c;
 }
 
-void graphics_draw_rect(RenderBuffer* rb, int x, int y, int size, uint32_t color) {
-    int x1 = x - size/2, x2 = x + size/2;
-    int y1 = y - size/2, y2 = y + size/2;
-    if (x1 < 0) x1 = 0; if (x2 > rb->width) x2 = rb->width;
-    if (y1 < 0) y1 = 0; if (y2 > rb->height) y2 = rb->height;
-
+void draw_rect(RenderBuffer* b, int x, int y, int s, uint32_t c) {
+    int x1 = x - s/2, x2 = x + s/2;
+    int y1 = y - s/2, y2 = y + s/2;
+    if (x1 < 0) x1 = 0; if (x2 > b->width) x2 = b->width;
+    if (y1 < 0) y1 = 0; if (y2 > b->height) y2 = b->height;
     for (int i = y1; i < y2; i++) {
-        uint32_t* line = rb->pixels + (i * rb->stride);
-        for (int j = x1; j < x2; j++) line[j] = color;
+        uint32_t* l = b->pixels + i * b->stride;
+        for (int j = x1; j < x2; j++) l[j] = c;
     }
 }
 
-void graphics_draw_circle(RenderBuffer* rb, int cx, int cy, int r, uint32_t color) {
+void draw_circle(RenderBuffer* b, int cx, int cy, int r, uint32_t c) {
     int r2 = r * r;
     for (int y = -r; y <= r; y++) {
-        int screen_y = cy + y;
-        if (screen_y < 0 || screen_y >= rb->height) continue;
-        uint32_t* line = rb->pixels + (screen_y * rb->stride);
+        int sy = cy + y;
+        if (sy < 0 || sy >= b->height) continue;
+        uint32_t* l = b->pixels + sy * b->stride;
         int y2 = y * y;
         for (int x = -r; x <= r; x++) {
-            int screen_x = cx + x;
-            if (screen_x < 0 || screen_x >= rb->width) continue;
-            if (x * x + y2 <= r2) line[screen_x] = color;
+            int sx = cx + x;
+            if (sx < 0 || sx >= b->width) continue;
+            if (x*x + y2 <= r2) l[sx] = c;
         }
     }
 }
 
-void graphics_draw_ring(RenderBuffer* rb, int cx, int cy, int r, int thickness, uint32_t color) {
-    int r_out2 = r * r;
-    int r_in2 = (r - thickness) * (r - thickness);
+void draw_ring(RenderBuffer* b, int cx, int cy, int r, int t, uint32_t c) {
+    int ro = r * r, ri = (r - t) * (r - t);
     for (int y = -r; y <= r; y++) {
-        int screen_y = cy + y;
-        if (screen_y < 0 || screen_y >= rb->height) continue;
-        uint32_t* line = rb->pixels + (screen_y * rb->stride);
+        int sy = cy + y;
+        if (sy < 0 || sy >= b->height) continue;
+        uint32_t* l = b->pixels + sy * b->stride;
         int y2 = y * y;
         for (int x = -r; x <= r; x++) {
-            int screen_x = cx + x;
-            if (screen_x < 0 || screen_x >= rb->width) continue;
-            int dist2 = x * x + y2;
-            if (dist2 <= r_out2 && dist2 >= r_in2) line[screen_x] = color;
+            int sx = cx + x;
+            if (sx < 0 || sx >= b->width) continue;
+            int d = x*x + y2;
+            if (d <= ro && d >= ri) l[sx] = c;
         }
     }
 }
 
-void graphics_draw_texture_ex(RenderBuffer* rb, int cx, int cy,
-                              uint32_t* tex, int tw, int th,
-                              float angle, float scale) {
-    if (!tex || tw <= 0 || th <= 0) return;
-    int sw = (int)(tw * scale);
-    int sh = (int)(th * scale);
+void draw_tex(RenderBuffer* b, int cx, int cy, uint32_t* t, int tw, int th, float a, float s) {
+    if (!t || tw <= 0 || th <= 0) return;
+    int sw = tw * s, sh = th * s;
     if (sw <= 0 || sh <= 0) return;
-    float cos_a = cosf(angle);
-    float sin_a = sinf(angle);
-    int left = cx - sw/2, top = cy - sh/2;
-    int right = cx + sw/2, bottom = cy + sh/2;
-    if (left < 0) left = 0;
-    if (top < 0) top = 0;
-    if (right > rb->width) right = rb->width;
-    if (bottom > rb->height) bottom = rb->height;
-    if (left >= right || top >= bottom) return;
-
-    for (int y = top; y < bottom; ++y) {
-        uint32_t* out = rb->pixels + y * rb->stride;
-        for (int x = left; x < right; ++x) {
-            float dx = (float)(x - cx);
-            float dy = (float)(y - cy);
-            float src_x = dx * cos_a + dy * sin_a;
-            float src_y = -dx * sin_a + dy * cos_a;
-            float tx = src_x / scale + tw / 2.0f;
-            float ty = src_y / scale + th / 2.0f;
-            int ix = (int)(tx + 0.5f);
-            int iy = (int)(ty + 0.5f);
+    float ca = cosf(a), sa = sinf(a);
+    int l = cx - sw/2, tp = cy - sh/2, r = cx + sw/2, bt = cy + sh/2;
+    if (l < 0) l = 0; if (tp < 0) tp = 0;
+    if (r > b->width) r = b->width; if (bt > b->height) bt = b->height;
+    if (l >= r || tp >= bt) return;
+    float htw = tw / 2.0f, hth = th / 2.0f, inv = 1.0f / s;
+    for (int y = tp; y < bt; y++) {
+        uint32_t* o = b->pixels + y * b->stride;
+        for (int x = l; x < r; x++) {
+            float dx = x - cx, dy = y - cy;
+            float sx = dx * ca + dy * sa;
+            float sy = -dx * sa + dy * ca;
+            float tx = sx * inv + htw, ty = sy * inv + hth;
+            int ix = tx + 0.5f, iy = ty + 0.5f;
             if (ix >= 0 && ix < tw && iy >= 0 && iy < th) {
-                uint32_t pix = tex[iy * tw + ix];
-                if ((pix & 0xFF000000) != 0) out[x] = pix;
+                uint32_t p = t[iy * tw + ix];
+                if (p & 0xFF000000) o[x] = p;
             }
         }
     }
