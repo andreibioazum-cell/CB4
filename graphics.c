@@ -2,12 +2,12 @@
 #include <math.h>
 #include <string.h>
 
-void clear(RenderBuffer* b, uint32_t c) {
+void graphics_clear(RenderBuffer* b, uint32_t c) {
     int t = b->stride * b->height;
     for (int i = 0; i < t; i++) b->pixels[i] = c;
 }
 
-void draw_rect(RenderBuffer* b, int x, int y, int s, uint32_t c) {
+void graphics_draw_rect(RenderBuffer* b, int x, int y, int s, uint32_t c) {
     int x1 = x - s/2, x2 = x + s/2;
     int y1 = y - s/2, y2 = y + s/2;
     if (x1 < 0) x1 = 0; if (x2 > b->width) x2 = b->width;
@@ -18,7 +18,7 @@ void draw_rect(RenderBuffer* b, int x, int y, int s, uint32_t c) {
     }
 }
 
-void draw_circle(RenderBuffer* b, int cx, int cy, int r, uint32_t c) {
+void graphics_draw_circle(RenderBuffer* b, int cx, int cy, int r, uint32_t c) {
     int r2 = r * r;
     for (int y = -r; y <= r; y++) {
         int sy = cy + y;
@@ -33,7 +33,7 @@ void draw_circle(RenderBuffer* b, int cx, int cy, int r, uint32_t c) {
     }
 }
 
-void draw_ring(RenderBuffer* b, int cx, int cy, int r, int t, uint32_t c) {
+void graphics_draw_ring(RenderBuffer* b, int cx, int cy, int r, int t, uint32_t c) {
     int ro = r * r, ri = (r - t) * (r - t);
     for (int y = -r; y <= r; y++) {
         int sy = cy + y;
@@ -49,7 +49,7 @@ void draw_ring(RenderBuffer* b, int cx, int cy, int r, int t, uint32_t c) {
     }
 }
 
-void draw_tex(RenderBuffer* b, int cx, int cy, uint32_t* t, int tw, int th, float a, float s) {
+void graphics_draw_texture_ex(RenderBuffer* b, int cx, int cy, uint32_t* t, int tw, int th, float a, float s) {
     if (!t || tw <= 0 || th <= 0) return;
     int sw = tw * s, sh = th * s;
     if (sw <= 0 || sh <= 0) return;
