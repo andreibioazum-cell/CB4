@@ -21,7 +21,23 @@ static int32_t handle_input(struct android_app* app, AInputEvent* event) {
         int action = AMotionEvent_getAction(event);
         float x = AMotionEvent_getX(event, 0);
         float y = AMotionEvent_getY(event, 0);
+        // Обработка джойстика
         ui_handle_joystick(&e->game.joy, x, y, action);
+        // Обработка кнопки атаки
+        if (ui_handle_button(&e->game.attackBtn, x, y, action)) {
+            // Создаём пулю
+            if (!e->game.bullet.active) {
+                float angle = e->game.player.angle;
+                float cos_a = cosf(angle);
+                float sin_a = sinf(angle);
+                e->game.bullet.x = e->game.player.x + 46.0f * cos_a;
+                e->game.bullet.y = e->game.player.y + 46.0f * sin_a;
+                e->game.bullet.vx = BULLET_SPEED * cos_a;
+                e->game.bullet.vy = BULLET_SPEED * sin_a;
+                e->game.bullet.active = 1;
+                e->game.bullet.radius = 10;
+            }
+        }
         return 1;
     }
     return 0;
