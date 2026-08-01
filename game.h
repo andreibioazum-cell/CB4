@@ -8,18 +8,23 @@
 #include "font.h"
 
 typedef struct {
-    float x, y;
-    float angle;
-    float last_angle;
-    float scale;
+    float x, y, angle, last_angle, scale;
     uint32_t* texture;
     int tex_width, tex_height;
     int tex_ready;
 } Player;
 
 typedef struct {
+    float x, y, vx, vy;
+    int active;
+    int radius;
+} Bullet;
+
+typedef struct {
     Player player;
     Joystick joy;
+    Button attackBtn;
+    Bullet bullet;
     Font* font;
     int screen_w, screen_h;
     int fontSize;
