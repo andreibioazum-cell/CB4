@@ -1,20 +1,12 @@
 #include "graphics.h"
-#include <arm_neon.h>
 #include <string.h>
 #include <math.h>
 
-// stb_image.h НЕ должен иметь реализацию в этом файле
-// просто подключаем заголовок, если нужны типы
-// #include "stb_image.h"  // закомментировано, т.к. не используется
-
 void graphics_clear(RenderBuffer* rb, uint32_t color) {
-    uint32x4_t v_color = vdupq_n_u32(color);
-    int total_pixels = rb->stride * rb->height;
-    int i = 0;
-    for (; i <= total_pixels - 4; i += 4) {
-        vst1q_u32(&rb->pixels[i], v_color);
+    int total = rb->stride * rb->height;
+    for (int i = 0; i < total; i++) {
+        rb->pixels[i] = color;
     }
-    for (; i < total_pixels; i++) rb->pixels[i] = color;
 }
 
 void graphics_draw_rect(RenderBuffer* rb, int x, int y, int size, uint32_t color) {
