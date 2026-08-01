@@ -3,14 +3,14 @@
 #include <android/input.h>
 #include "font.h"
 
-void draw_joystick(RenderBuffer* b, Joystick* j) {
+void ui_draw_joystick(RenderBuffer* b, Joystick* j) {
     graphics_draw_ring(b, j->centerX, j->centerY, j->radius, 4, 0xFF000000);
     int sx = j->centerX + (int)j->touchOffX;
     int sy = j->centerY + (int)j->touchOffY;
     graphics_draw_circle(b, sx, sy, 35, 0xFF000000);
 }
 
-void handle_joystick(Joystick* j, float x, float y, int action) {
+void ui_handle_joystick(Joystick* j, float x, float y, int action) {
     if (action == AMOTION_EVENT_ACTION_UP || action == AMOTION_EVENT_ACTION_CANCEL) {
         j->dirX = j->dirY = j->touchOffX = j->touchOffY = 0.0f;
         return;
@@ -29,13 +29,13 @@ void handle_joystick(Joystick* j, float x, float y, int action) {
     j->touchOffY = j->dirY * clamped;
 }
 
-void draw_button(RenderBuffer* b, Button* btn, const char* text) {
+void ui_draw_button(RenderBuffer* b, Button* btn, const char* text) {
     graphics_draw_circle(b, btn->x, btn->y, btn->radius, 0xFFFF0000);
     graphics_draw_ring(b, btn->x, btn->y, btn->radius, 3, 0xFF000000);
     draw_text_outlined(b, btn->x - 30, btn->y - 12, text, 0xFFFFFFFF, 0xFF000000);
 }
 
-int handle_button(Button* btn, float x, float y, int action) {
+int ui_handle_button(Button* btn, float x, float y, int action) {
     float dx = x - btn->x, dy = y - btn->y;
     float dist = sqrtf(dx*dx + dy*dy);
     if (action == AMOTION_EVENT_ACTION_DOWN && dist < btn->radius) {
