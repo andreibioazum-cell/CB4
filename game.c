@@ -6,8 +6,7 @@
 #include <string.h>
 #include <sys/time.h>
 #include <android/asset_manager.h>
-
-#define STB_IMAGE_IMPLEMENTATION  // ТОЛЬКО ЗДЕСЬ
+#define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 
 #define OFF 0.0f
