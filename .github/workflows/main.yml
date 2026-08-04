@@ -18,7 +18,7 @@ jobs:
       ANDROID_MIN_API: 21
 
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Install Android SDK
@@ -28,38 +28,68 @@ jobs:
         shell: bash
         run: |
           yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager "platforms;android-${ANDROID_API}" "build-tools;34.0.0"
+          sdkmanager \
+            "platforms;android-${ANDROID_API}" \
+            "build-tools;34.0.0"
 
       - name: Install Android NDK
         uses: nttld/setup-ndk@v1
         with:
           ndk-version: r25c
 
-      - name: Install Odin
+      - name: Install Odin compiler
         shell: bash
         run: |
           set -euo pipefail
 
           archive="$RUNNER_TEMP/odin.tar.gz"
-          url="https://github.com/odin-lang/Odin/releases/download/${ODIN_VERSION}/odin-linux-amd64-${ODIN_VERSION}.tar.gz"
+          odin_url="https://github.com/odin-lang/Odin/releases/download/${ODIN_VERSION}/odin-linux-amd64-${ODIN_VERSION}.tar.gz"
 
-          curl --fail --location --retry 5 "$url" --output "$archive"
+          curl \
+            --fail \
+            --location \
+            --retry 5 \
+            --retry-delay 2 \
+            "$odin_url" \
+            --output "$archive"
+
           echo "${ODIN_SHA256}  ${archive}" | sha256sum --check --strict
 
           mkdir -p "$RUNNER_TEMP/odin"
           tar -xzf "$archive" --directory "$RUNNER_TEMP/odin"
 
           ODIN_BIN="$(find "$RUNNER_TEMP/odin" -type f -name odin -print -quit)"
+
           test -n "$ODIN_BIN"
           chmod +x "$ODIN_BIN"
 
           echo "ODIN_BIN=$ODIN_BIN" >> "$GITHUB_ENV"
+
           "$ODIN_BIN" version
+
+      - name: Check repository sources
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cd "$GITHUB_WORKSPACE"
+
+          test -d src
+          test -f src/android.odin
+          test -f src/clock.odin
+          test -f src/game.odin
+          test -f src/graphics.odin
+          test -f src/main.odin
+          test -f src/ui.odin
+
+          find src -maxdepth 1 -type f -name '*.odin' -print
 
       - name: Build Odin libraries
         shell: bash
         run: |
           set -euo pipefail
+
+          cd "$GITHUB_WORKSPACE"
 
           NDK_ROOT="${ANDROID_NDK_ROOT:-${ANDROID_NDK_HOME:-}}"
           test -n "$NDK_ROOT"
@@ -67,7 +97,10 @@ jobs:
           TOOLCHAIN="$NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/bin"
           GLUE="$NDK_ROOT/sources/android/native_app_glue"
 
-          mkdir -p build/lib/arm64-v8a build/lib/armeabi-v7a
+          test -d "$GLUE"
+
+          mkdir -p build/lib/arm64-v8a
+          mkdir -p build/lib/armeabi-v7a
 
           build_abi() {
             local target="$1"
@@ -76,20 +109,26 @@ jobs:
             local glue_object="$4"
             local output="$5"
 
-            "$ODIN_BIN" build src \
+            echo "Building Odin target: $target"
+
+            "$ODIN_BIN" build "$GITHUB_WORKSPACE/src" \
               -target:"$target" \
               -build-mode:obj \
               -reloc-mode:pic \
               -out:"$object"
 
-            "$clang" -fPIC -O3 \
+            "$clang" \
+              -fPIC \
+              -O3 \
               -ffunction-sections \
               -fdata-sections \
               -I"$GLUE" \
               -c "$GLUE/android_native_app_glue.c" \
               -o "$glue_object"
 
-            "$clang" -shared -fPIC \
+            "$clang" \
+              -shared \
+              -fPIC \
               -Wl,--gc-sections \
               -Wl,-z,max-page-size=16384 \
               -Wl,-u,ANativeActivity_onCreate \
@@ -120,27 +159,36 @@ jobs:
         run: |
           set -euo pipefail
 
+          cd "$GITHUB_WORKSPACE"
+
           mkdir -p staging/lib/arm64-v8a
           mkdir -p staging/lib/armeabi-v7a
           mkdir -p staging/assets
 
-          cp build/lib/arm64-v8a/libmain.so \
+          cp \
+            build/lib/arm64-v8a/libmain.so \
             staging/lib/arm64-v8a/libmain.so
 
-          cp build/lib/armeabi-v7a/libmain.so \
+          cp \
+            build/lib/armeabi-v7a/libmain.so \
             staging/lib/armeabi-v7a/libmain.so
 
           SDK_ROOT="$ANDROID_HOME"
           BUILD_TOOLS="$SDK_ROOT/build-tools/34.0.0"
 
-          "$BUILD_TOOLS/aapt" package -f \
+          "$BUILD_TOOLS/aapt" package \
+            -f \
             -M AndroidManifest.xml \
             -I "$SDK_ROOT/platforms/android-${ANDROID_API}/android.jar" \
             -F unsigned.apk \
             staging
 
-          "$BUILD_TOOLS/zipalign" -f -v 4 \
-            unsigned.apk aligned.apk
+          "$BUILD_TOOLS/zipalign" \
+            -f \
+            -v \
+            4 \
+            unsigned.apk \
+            aligned.apk
 
           keytool -genkeypair -v \
             -keystore debug.keystore \
