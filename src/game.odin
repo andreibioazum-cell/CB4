@@ -129,8 +129,8 @@ game_update :: proc(game: ^Game) {
     if game.bullet.active {
         game.bullet.x += game.bullet.vx * dt
         game.bullet.y += game.bullet.vy * dt
-        if game.bullet.x < -game.bullet.radius || game.bullet.x > f32(game.width + game.bullet.radius) ||
-           game.bullet.y < -game.bullet.radius || game.bullet.y > f32(game.height + game.bullet.radius) {
+        if game.bullet.x < f32(-game.bullet.radius) || game.bullet.x > f32(game.width + game.bullet.radius) ||
+           game.bullet.y < f32(-game.bullet.radius) || game.bullet.y > f32(game.height + game.bullet.radius) {
             game.bullet.active = false
         }
     }
