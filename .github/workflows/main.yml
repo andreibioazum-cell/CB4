@@ -115,7 +115,7 @@ jobs:
               -target:"$target" \
               -build-mode:obj \
               -reloc-mode:pic \
-              -O:speed \
+              -o:speed \
               -out:"$object"
 
             "$clang" \
