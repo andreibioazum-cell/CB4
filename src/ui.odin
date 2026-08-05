@@ -158,7 +158,7 @@ ui_draw_glyph :: proc(buffer: ^Render_Buffer, x, y: int, character: u8, scale: i
     for row := 0; row < 7; row += 1 {
         bits := glyph[row]
         for column := 0; column < 5; column += 1 {
-            mask := u8(1 << (4 - column))
+            mask := u8(1 << uint(4 - column))
             if bits & mask != 0 {
                 graphics_fill_rect(buffer, x + column*scale, y + row*scale, scale, scale, color)
             }
@@ -188,7 +188,8 @@ ui_draw_text_outlined :: proc(buffer: ^Render_Buffer, x, y: int, text: string, s
     ui_draw_text(buffer, x, y, text, scale, color)
 }
 
-ui_draw_number :: proc(buffer: ^Render_Buffer, x, y, value, scale: int, color, outline: u32) {
+ui_draw_number :: proc(buffer: ^Render_Buffer, x, y, value_in, scale: int, color, outline: u32) {
+    value := value_in
     if value < 0 {
         value = 0
     }
