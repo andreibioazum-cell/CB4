@@ -1,6 +1,12 @@
 #ifndef UI_H
 #define UI_H
+
 #include "graphics.h"
+#include "font.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 typedef struct {
     int centerX, centerY, radius;
@@ -14,8 +20,12 @@ typedef struct {
 
 void ui_draw_joystick(RenderBuffer* rb, Joystick* joy);
 void ui_handle_joystick(Joystick* joy, float x, float y, int action);
-void ui_draw_button(RenderBuffer* rb, Button* btn, const char* text);
+void ui_draw_button(Font* font, RenderBuffer* rb, Button* btn, const char* text);
 int ui_handle_button(Button* btn, float x, float y, int action);
-void draw_text_outlined(RenderBuffer* rb, int x, int y, const char* text, uint32_t color, uint32_t outline);
+void draw_text_outlined(Font* font, RenderBuffer* rb, int x, int y, const char* text, uint32_t color, uint32_t outline);
 
+#ifdef __cplusplus
+}
 #endif
+
+#endif /* UI_H */

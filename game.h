@@ -7,6 +7,10 @@
 #include "ui.h"
 #include "font.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 typedef struct {
     float x, y, angle, last_angle, scale;
     uint32_t* texture;
@@ -38,4 +42,8 @@ void game_update(Game* g, int w, int h);
 void game_draw(Game* g, RenderBuffer* rb);
 void game_free(Game* g);
 
+#ifdef __cplusplus
+}
 #endif
+
+#endif /* GAME_H */

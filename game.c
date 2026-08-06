@@ -13,59 +13,92 @@
 #define PLAYER_SCALE 3.0f
 
 static uint32_t* load_tex(AAssetManager* m, const char* f, int* w, int* h) {
+    if (!m || !f) return NULL;
     AAsset* a = AAssetManager_open(m, f, AASSET_MODE_BUFFER);
-    if (!a) return 0;
+    if (!a) return NULL;
     size_t sz = AAsset_getLength(a);
     unsigned char* d = malloc(sz);
+    if (!d) { AAsset_close(a); return NULL; }
     AAsset_read(a, d, sz);
     AAsset_close(a);
     int n;
     unsigned char* img = stbi_load_from_memory(d, sz, w, h, &n, 4);
     free(d);
-    if (!img) return 0;
-    uint32_t* p = malloc((*w)*(*h)*4);
-    for (int i = 0; i < (*w)*(*h); i++) {
-        uint8_t r = img[i*4], g = img[i*4+1], b = img[i*4+2], a = img[i*4+3];
-        p[i] = (a<<24)|(r<<16)|(g<<8)|b;
+    if (!img) return NULL;
+    uint32_t* p = malloc((*w) * (*h) * sizeof(uint32_t));
+    if (!p) { stbi_image_free(img); return NULL; }
+    for (int i = 0; i < (*w) * (*h); i++) {
+        uint8_t r = img[i * 4];
+        uint8_t g = img[i * 4 + 1];
+        uint8_t b = img[i * 4 + 2];
+        uint8_t a = img[i * 4 + 3];
+        p[i] = ((uint32_t)a << 24) | ((uint32_t)r << 16) | ((uint32_t)g << 8) | (uint32_t)b;
     }
     stbi_image_free(img);
     return p;
 }
 
 int game_init(Game* g, int w, int h, AAssetManager* m) {
+    if (!g) return 0;
     memset(g, 0, sizeof(Game));
-    g->screen_w = w; g->screen_h = h;
-    g->player.x = w/2.0f; g->player.y = h/2.0f;
+    g->screen_w = w;
+    g->screen_h = h;
+    g->player.x = w / 2.0f;
+    g->player.y = h / 2.0f;
     g->player.scale = PLAYER_SCALE;
-    g->joy.centerX = 150; g->joy.centerY = h-150; g->joy.radius = 80;
-    g->attackBtn.x = w-120; g->attackBtn.y = h-120; g->attackBtn.radius = 60;
-    g->player.texture = load_tex(m, "cube.png", &g->player.tex_width, &g->player.tex_height);
-    g->player.tex_ready = (g->player.texture != 0);
-    g->fontSize = h/30; if(g->fontSize<12) g->fontSize=12; if(g->fontSize>48) g->fontSize=48;
-    AAsset* fa = AAssetManager_open(m, "Roboto-Regular.ttf", AASSET_MODE_BUFFER);
-    if (fa) {
-        size_t sz = AAsset_getLength(fa);
-        unsigned char* fd = malloc(sz);
-        AAsset_read(fa, fd, sz);
-        AAsset_close(fa);
-        font_init(&g->font, fd, sz, (float)g->fontSize);
-        free(fd);
+    g->joy.centerX = 150;
+    g->joy.centerY = h - 150;
+    g->joy.radius = 80;
+    g->attackBtn.x = w - 120;
+    g->attackBtn.y = h - 120;
+    g->attackBtn.radius = 60;
+
+    if (m) {
+        g->player.texture = load_tex(m, "cube.png", &g->player.tex_width, &g->player.tex_height);
+        g->player.tex_ready = (g->player.texture != NULL);
+
+        g->fontSize = h / 30;
+        if (g->fontSize < 12) g->fontSize = 12;
+        if (g->fontSize > 48) g->fontSize = 48;
+
+        AAsset* fa = AAssetManager_open(m, "Roboto-Regular.ttf", AASSET_MODE_BUFFER);
+        if (fa) {
+            size_t sz = AAsset_getLength(fa);
+            unsigned char* fd = malloc(sz);
+            if (fd) {
+                AAsset_read(fa, fd, sz);
+                AAsset_close(fa);
+                font_init(&g->font, fd, sz, (float)g->fontSize);
+                free(fd);
+            } else {
+                AAsset_close(fa);
+            }
+        }
     }
-    gettimeofday(&g->lastTime, 0);
+    gettimeofday(&g->lastTime, NULL);
     return 1;
 }
 
 void game_update(Game* g, int w, int h) {
-    g->screen_w = w; g->screen_h = h;
-    g->joy.centerY = h-150;
-    g->attackBtn.x = w-120; g->attackBtn.y = h-120;
-    int ns = h/30; if(ns<12) ns=12; if(ns>48) ns=48;
-    if (ns != g->fontSize && g->font) { g->fontSize = ns; font_set_size(g->font, (float)ns); }
+    if (!g) return;
+    g->screen_w = w;
+    g->screen_h = h;
+    g->joy.centerY = h - 150;
+    g->attackBtn.x = w - 120;
+    g->attackBtn.y = h - 120;
+
+    int ns = h / 30;
+    if (ns < 12) ns = 12;
+    if (ns > 48) ns = 48;
+    if (ns != g->fontSize && g->font) {
+        g->fontSize = ns;
+        font_set_size(g->font, (float)ns);
+    }
 
     g->player.x += g->joy.dirX * 10.0f;
     g->player.y += g->joy.dirY * 10.0f;
     float sc = g->player.scale;
-    float maxE = g->player.tex_ready ? hypotf(g->player.tex_width*sc*0.5f, g->player.tex_height*sc*0.5f) : 40.0f;
+    float maxE = g->player.tex_ready ? hypotf(g->player.tex_width * sc * 0.5f, g->player.tex_height * sc * 0.5f) : 40.0f;
     if (g->player.x < maxE) g->player.x = maxE;
     if (g->player.x > w - maxE) g->player.x = w - maxE;
     if (g->player.y < maxE) g->player.y = maxE;
@@ -73,7 +106,7 @@ void game_update(Game* g, int w, int h) {
 
     float len = hypotf(g->joy.dirX, g->joy.dirY);
     if (len > 0.001f) {
-        g->player.angle = atan2f(g->joy.dirX, -g->joy.dirY); // OFF = 0
+        g->player.angle = atan2f(g->joy.dirX, -g->joy.dirY);
         g->player.last_angle = g->player.angle;
     } else {
         g->player.angle = g->player.last_angle;
@@ -82,14 +115,15 @@ void game_update(Game* g, int w, int h) {
     if (g->bullet.active) {
         g->bullet.x += g->bullet.vx;
         g->bullet.y += g->bullet.vy;
-        if (g->bullet.x < 0 || g->bullet.x > w || g->bullet.y < 0 || g->bullet.y > h)
+        if (g->bullet.x < 0 || g->bullet.x > w || g->bullet.y < 0 || g->bullet.y > h) {
             g->bullet.active = 0;
+        }
     }
 
     g->frameCount++;
     struct timeval now;
-    gettimeofday(&now, 0);
-    float dt = (now.tv_sec - g->lastTime.tv_sec) + (now.tv_usec - g->lastTime.tv_usec)/1000000.0f;
+    gettimeofday(&now, NULL);
+    float dt = (now.tv_sec - g->lastTime.tv_sec) + (now.tv_usec - g->lastTime.tv_usec) / 1000000.0f;
     if (dt >= 1.0f) {
         g->fps = g->frameCount / dt;
         g->frameCount = 0;
@@ -98,6 +132,7 @@ void game_update(Game* g, int w, int h) {
 }
 
 void game_draw(Game* g, RenderBuffer* b) {
+    if (!g || !b) return;
     graphics_clear(b, 0xFFCCCCCC);
     if (g->player.tex_ready) {
         graphics_draw_texture_ex(b, (int)g->player.x, (int)g->player.y,
@@ -110,14 +145,22 @@ void game_draw(Game* g, RenderBuffer* b) {
         graphics_draw_circle(b, (int)g->bullet.x, (int)g->bullet.y, g->bullet.radius, 0xFFFFFF00);
     }
     ui_draw_joystick(b, &g->joy);
-    ui_draw_button(b, &g->attackBtn, "Атака");
+    ui_draw_button(g->font, b, &g->attackBtn, "Атака");
+
     char fps[32];
     int fps_int = (int)(g->fps + 0.5f);
     snprintf(fps, sizeof(fps), "FPS: %d", fps_int);
-    draw_text_outlined(b, b->width-120, 40, fps, 0xFFFFFFFF, 0xFF000000);
+    draw_text_outlined(g->font, b, b->width - 120, 40, fps, 0xFFFFFFFF, 0xFF000000);
 }
 
 void game_free(Game* g) {
-    if (g->player.texture) { free(g->player.texture); g->player.texture = 0; }
-    if (g->font) { font_free(g->font); g->font = 0; }
+    if (!g) return;
+    if (g->player.texture) {
+        free(g->player.texture);
+        g->player.texture = NULL;
+    }
+    if (g->font) {
+        font_free(g->font);
+        g->font = NULL;
+    }
 }
