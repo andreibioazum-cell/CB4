@@ -339,3 +339,96 @@ pub export fn graphics_draw_texture_ex(
         }
     }
 }
+
+/// Draws an interactive health bar with background, fill percentage, and border
+pub export fn graphics_draw_health_bar(
+    rb: ?*RenderBuffer,
+    x: c_int,
+    y: c_int,
+    w: c_int,
+    h: c_int,
+    cur_hp: c_int,
+    max_hp: c_int,
+    fg_col: u32,
+    bg_col: u32,
+    border_col: u32,
+) void {
+    if (w <= 4 or h <= 4 or max_hp <= 0) return;
+
+    // Draw background
+    graphics_draw_rect_exact(rb, x, y, w, h, bg_col);
+
+    // Calculate fill width
+    var clamped_hp = cur_hp;
+    if (clamped_hp < 0) clamped_hp = 0;
+    if (clamped_hp > max_hp) clamped_hp = max_hp;
+
+    const inner_w = w - 4;
+    const fill_w: c_int = @divTrunc(inner_w * clamped_hp, max_hp);
+    if (fill_w > 0) {
+        graphics_draw_rect_exact(rb, x + 2, y + 2, fill_w, h - 4, fg_col);
+    }
+
+    // Draw border
+    graphics_draw_rect_lines(rb, x, y, w, h, 2, border_col);
+}
+
+/// Draws a semi-transparent particle circle with alpha blending
+pub export fn graphics_draw_particle(
+    rb: ?*RenderBuffer,
+    cx: c_int,
+    cy: c_int,
+    radius: c_int,
+    color: u32,
+    alpha: f32,
+) void {
+    const b = rb orelse return;
+    if (radius <= 0 or alpha <= 0.0 or b.width <= 0 or b.height <= 0) return;
+
+    var clamped_alpha = alpha;
+    if (clamped_alpha > 1.0) clamped_alpha = 1.0;
+    const u_alpha: u32 = @intFromFloat(clamped_alpha * 255.0);
+    if (u_alpha == 0) return;
+
+    const r2: i64 = @as(i64, radius) * @as(i64, radius);
+    const u_stride: usize = @intCast(b.stride);
+
+    const sr: u32 = (color >> 16) & 0xFF;
+    const sg: u32 = (color >> 8) & 0xFF;
+    const sb: u32 = color & 0xFF;
+    const inv_a: u32 = 255 - u_alpha;
+
+    var y: c_int = -radius;
+    while (y <= radius) : (y += 1) {
+        const sy = cy + y;
+        if (sy < 0 or sy >= b.height) continue;
+        const y2: i64 = @as(i64, y) * @as(i64, y);
+        const rem = r2 - y2;
+        if (rem < 0) continue;
+
+        const f_rem: f32 = @floatFromInt(rem);
+        const dx: c_int = @intFromFloat(@sqrt(f_rem));
+
+        var x1 = cx - dx;
+        var x2 = cx + dx + 1;
+        if (x1 < 0) x1 = 0;
+        if (x2 > b.width) x2 = b.width;
+        if (x1 >= x2) continue;
+
+        const row_offset = @as(usize, @intCast(sy)) * u_stride;
+        var x = x1;
+        while (x < x2) : (x += 1) {
+            const dst_idx = row_offset + @as(usize, @intCast(x));
+            const dst = b.pixels[dst_idx];
+            const dr: u32 = (dst >> 16) & 0xFF;
+            const dg: u32 = (dst >> 8) & 0xFF;
+            const db: u32 = dst & 0xFF;
+
+            const out_r = (sr * u_alpha + dr * inv_a) / 255;
+            const out_g = (sg * u_alpha + dg * inv_a) / 255;
+            const out_b = (sb * u_alpha + db * inv_a) / 255;
+
+            b.pixels[dst_idx] = 0xFF000000 | (out_r << 16) | (out_g << 8) | out_b;
+        }
+    }
+}

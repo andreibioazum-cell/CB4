@@ -26,6 +26,10 @@ void graphics_draw_texture(RenderBuffer* rb, int x, int y, const uint32_t* tex, 
 void graphics_draw_texture_ex(RenderBuffer* rb, int cx, int cy,
                               const uint32_t* tex, int tw, int th,
                               float angle, float scale);
+void graphics_draw_health_bar(RenderBuffer* rb, int x, int y, int w, int h,
+                              int cur_hp, int max_hp,
+                              uint32_t fg_col, uint32_t bg_col, uint32_t border_col);
+void graphics_draw_particle(RenderBuffer* rb, int cx, int cy, int radius, uint32_t color, float alpha);
 
 #ifdef __cplusplus
 }
