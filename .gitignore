@@ -1,6 +1,0 @@
-# Android/Odin build outputs
-build/
-staging/
-*.apk
-*.keystore
-*.o
